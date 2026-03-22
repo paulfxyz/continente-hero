@@ -1,0 +1,62 @@
+# config.yaml — Continente Cart Bot — Shopping List
+#
+# ⚠️  SECURITY NOTE
+# config.yaml is in .gitignore — never committed.
+#
+# CREDENTIALS
+# Recommended: run once to save your session (no password stored anywhere):
+#   python continente.py --save-session
+#
+# Alternative A — .env file:
+#   CONTINENTE_USER=your@email.com
+#   CONTINENTE_PASS=yourpassword
+#
+# Alternative B — set directly below:
+# username: "your@email.com"
+# password: "yourpassword"
+
+# Browser settings
+headless: true
+slow_mo: 150
+
+products:
+
+  # Direct URL (most reliable)
+  - name: "Leite Meio Gordo Mimosa"
+    url: "https://www.continente.pt/produto/leite-uht-meio-gordo-mimosa-6879912.html"
+    quantity: 2
+
+  # Search only
+  - name: "Pão de Forma Integral"
+    query: "pão de forma integral"
+    quantity: 1
+
+  # Search with brand preference
+  - name: "Azeite Extra Virgem Gallo"
+    query: "azeite extra virgem"
+    brand: "Gallo"
+    quantity: 1
+
+  - name: "Iogurte Natural Activia"
+    query: "iogurte natural activia"
+    brand: "Activia"
+    quantity: 4
+
+  - name: "Café Delta Q Cápsulas"
+    query: "café delta q cápsulas"
+    quantity: 2
+
+  - name: "Cerveja Super Bock 33cl"
+    query: "super bock 33cl"
+    brand: "Super Bock"
+    quantity: 6
+
+  - name: "Papel Higiénico Renova"
+    query: "papel higiénico renova"
+    brand: "Renova"
+    quantity: 2
+
+  # Seasonal / possibly out of stock — bot will report gracefully
+  - name: "Bacalhau Salgado Seco"
+    query: "bacalhau salgado seco"
+    quantity: 1
