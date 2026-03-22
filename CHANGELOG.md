@@ -7,6 +7,33 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ---
 
+## 🔖 [1.2.1] — 2026-03-22
+
+### 🐛 Hotfix
+
+**`install.sh` — Python 3.14 compatibility block**
+- 🚫 `fix:` Hard-blocked Python 3.14+ with a clear error message and `brew install python@3.13` instructions — Playwright's `greenlet` dependency has no pre-built wheel for 3.14 and the C++ source compilation fails on current macOS toolchains
+- 🔍 `fix:` Removed `python3` bare command from the candidate search order — on many macOS setups `python3` resolves to whatever Homebrew last installed, which may be 3.14+; explicit versioned binaries (`python3.13`, `python3.12`, `python3.11`) are now tried first and the bare `python3` is only checked as a last resort (and still subject to the version cap)
+- ✅ `fix:` Version check helper now returns a `BLOCKED:<ver>` sentinel so the installer can report the exact blocked version to the user even if it keeps scanning for a valid one
+- 📋 `fix:` Updated supported range note in script header: `Python 3.11 – 3.13`
+- 🛠️ `fix:` "Next steps" section now says `./edit.sh` instead of `nano config.yaml`
+
+---
+
+## 🔖 [1.2.0] — 2026-03-22
+
+### ✨ Improvements
+
+**README.md + INSTALL.md — full session tutorial**
+- 📖 `feat:` Added deep-dive "How the session connection works" section to both docs — explains cookies/tokens concept in plain English
+- 🍪 `feat:` Cookie anatomy table added — describes each key cookie (`dwsid`, `dwanonymous`, `dw_*`) and its role
+- 🔑 `feat:` Step-by-step `--save-session` walkthrough with exact expected terminal output
+- 🔄 `feat:` Flow diagram (ASCII) showing the three-tier credential priority: saved cookies → env vars → config.yaml
+- 🔒 `feat:` Security notes section — explains what is and isn't stored, and why session files are gitignored
+- ❓ `feat:` FAQ entries added: session expiry, re-authentication, headless vs. visible mode
+
+---
+
 ## 🔖 [1.1.0] — 2026-03-22
 
 ### ✨ Improvements
@@ -47,11 +74,20 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 - 🔑 `feat:` `--save-session` interactive flow — opens browser for manual login, captures and saves cookies
 - 🤖 `feat:` Anti-detection: real Chrome UA, `--disable-blink-features=AutomationControlled`, pt-PT locale, Europe/Lisbon timezone
 
+**Config (`config.yaml`)**
+- 📝 `feat:` YAML shopping list with `name`, `query`, `quantity`, `url`, `brand` fields
+- ✅ `feat:` `headless` and `slow_mo` tunable settings
+
 **Shell scripts**
-- 🛠️ `feat:` `install.sh`, `run.sh`, `update.sh`, `uninstall.sh`
+- 🛠️ `feat:` `install.sh` — one-shot macOS setup: Python version check, venv creation, pip install, Playwright Chromium download
+- ▶️ `feat:` `run.sh` — venv-aware launcher, passes all CLI flags through to `continente.py`
+- 🔄 `feat:` `update.sh` — git pull + pip upgrade + playwright browser update
+- 🗑️ `feat:` `uninstall.sh` — clean teardown of venv, session, reports, and Playwright Chromium cache
 
 **Documentation**
-- 📖 `feat:` README.md, INSTALL.md, CHANGELOG.md
+- 📖 `feat:` `README.md` — full project documentation
+- 📦 `feat:` `INSTALL.md` — step-by-step installation guide, all auth options, CLI reference, troubleshooting table
+- 📝 `feat:` `CHANGELOG.md` — this file
 
 ---
 
