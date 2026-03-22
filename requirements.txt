@@ -1,0 +1,10 @@
+# requirements.txt — Continente Cart Bot
+
+# Browser automation — runs a real Chromium instance
+playwright==1.44.0
+
+# YAML config parsing
+pyyaml==6.0.1
+
+# .env file support (CONTINENTE_USER / CONTINENTE_PASS)
+python-dotenv==1.0.1
