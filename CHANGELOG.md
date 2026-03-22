@@ -7,6 +7,28 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ---
 
+## 🔖 [1.1.0] — 2026-03-22
+
+### ✨ Improvements
+
+**`edit.sh` — new shopping list editor launcher**
+- 🛠️ `feat:` Added `edit.sh` — opens `config.yaml` in the best available editor on your Mac
+- 🔍 `feat:` Editor priority: VS Code → Cursor → Sublime Text → TextEdit (GUI) → nano (terminal)
+- ⚠️ `feat:` TextEdit warning displayed when macOS GUI editor is selected — reminds user to use plain text mode (critical for YAML)
+- 📖 `feat:` nano controls cheatsheet printed when terminal fallback is used
+
+**README.md — complete rewrite for clarity**
+- 📖 `feat:` Full beginner-friendly walkthrough added (Step 1 → Step 5 with zero assumed knowledge)
+- 🧠 `feat:` New "How it works — under the hood" section covering: browser engine, login flow, product resolution strategy, add-to-cart logic, failover guarantee, session persistence, anti-detection approach
+- 🛒 `feat:` Full example terminal output added to show exactly what a run looks like
+- 📋 `feat:` Shopping list format table expanded with descriptions for each field
+- 🔗 `feat:` All GitHub URLs updated from `continente-cart` → `continente-hero`
+
+**Repository**
+- 🏷️ `feat:` Renamed from `continente-cart` to `continente-hero`
+
+---
+
 ## 🔖 [1.0.0] — 2026-03-22
 
 ### 🎉 Initial release
@@ -25,20 +47,11 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 - 🔑 `feat:` `--save-session` interactive flow — opens browser for manual login, captures and saves cookies
 - 🤖 `feat:` Anti-detection: real Chrome UA, `--disable-blink-features=AutomationControlled`, pt-PT locale, Europe/Lisbon timezone
 
-**Config (`config.yaml`)**
-- 📝 `feat:` YAML shopping list with `name`, `query`, `quantity`, `url`, `brand` fields
-- ✅ `feat:` `headless` and `slow_mo` tunable settings
-
 **Shell scripts**
-- 🛠️ `feat:` `install.sh` — one-shot macOS setup: Python version check, venv creation, pip install, Playwright Chromium download
-- ▶️ `feat:` `run.sh` — venv-aware launcher, passes all CLI flags through to `continente.py`
-- 🔄 `feat:` `update.sh` — git pull + pip upgrade + playwright browser update
-- 🗑️ `feat:` `uninstall.sh` — clean teardown of venv, session, reports, and Playwright Chromium cache
+- 🛠️ `feat:` `install.sh`, `run.sh`, `update.sh`, `uninstall.sh`
 
 **Documentation**
-- 📖 `feat:` `README.md` — full project documentation with quick start, shopping list format, report sample, how-it-works deep dive
-- 📦 `feat:` `INSTALL.md` — step-by-step installation guide, all auth options, CLI reference, troubleshooting table
-- 📝 `feat:` `CHANGELOG.md` — this file
+- 📖 `feat:` README.md, INSTALL.md, CHANGELOG.md
 
 ---
 
