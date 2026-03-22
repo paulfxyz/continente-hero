@@ -1,10 +1,10 @@
-# 🦸 Continente Hero
+# 🦸 continente-hero
 
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-45ba4b?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/)
 [![macOS](https://img.shields.io/badge/macOS-native-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.1.0-brightgreen?style=for-the-badge)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.2.0-brightgreen?style=for-the-badge)](CHANGELOG.md)
 
 **Automated cart builder for [continente.pt](https://www.continente.pt)**. Define your shopping list once in a YAML file. Run one command. Come back to a full cart.
 
@@ -91,6 +91,8 @@ This downloads ~170 MB of browser files the first time. You'll see progress on s
 A browser window opens on the continente.pt login page. Log in with your account normally — the bot does nothing here, it just watches. Once you see your homepage, switch back to the Terminal window and press **Enter**.
 
 Your session is now saved. You will **never need to log in again** unless your session expires (usually weeks or months later).
+
+> 🔁 Session expired? Just run `./run.sh --save-session` again — takes 30 seconds.
 
 ---
 
@@ -187,34 +189,204 @@ products:
 
 ---
 
-## 🔐 Authentication
+## 🔐 Authentication — full guide
 
-Three ways to authenticate — in order of recommendation:
+The bot needs to be logged in to your Continente account to add things to your cart. There are three ways to handle this. **Option A is what everyone should use.**
 
-### Option A — Save session (best, zero maintenance)
+---
+
+### Option A — Save session (recommended)
+
+**What is a "session" and why does saving it matter?**
+
+When you log in to a website in your browser, the site issues a set of small tokens called **cookies**. These cookies are stored in your browser and sent automatically with every request, so the site knows you're authenticated. That's why you don't have to type your password every time you open a new tab.
+
+`--save-session` captures those exact cookies after you log in manually, and saves them to a file: `session/cookies.json`. On every future run, the bot loads that file into its own private Chromium browser before visiting the site — so continente.pt sees an already-authenticated session. No password is ever stored. No automated login happens. The site just thinks it's you.
+
+**Step-by-step walkthrough:**
+
+Run this in your terminal:
+
 ```bash
 ./run.sh --save-session
 ```
-Opens a browser window. You log in manually once. Cookies are saved to `session/cookies.json`. All future runs are silent — no browser opens, no credentials needed.
 
-> 🔁 If the bot says it can't log in, just run `./run.sh --save-session` again to refresh.
+**1.** The terminal prompts you:
+```
+════════════════════════════════════════════════════════════════
+  SAVE SESSION
+════════════════════════════════════════════════════════════════
 
-### Option B — `.env` file
+  A browser window will open at the continente.pt login page.
+  Log in with your account, then come back here and press Enter.
+
+  Press Enter to open the browser…
+```
+Press **Enter**.
+
+**2.** A real Chromium browser window opens on the continente.pt login page. This is not a screenshot or a simulation — it's a full browser. You can see the page, click things, use 2-factor authentication, solve captchas, everything you'd do in Chrome or Safari.
+
+**3.** Log in to your Continente account the way you normally do:
+- Type your email and password
+- Complete SMS verification or 2FA if your account uses it
+- Wait until you land on the homepage and see your account name or icon in the header — that confirms you're fully logged in
+
+**4.** Switch back to the Terminal window (the browser can stay open). Press **Enter** when you see:
+```
+  → Browser is open. Log in to continente.pt.
+  → Once you see your account / homepage, come back here.
+
+  Press Enter once you are logged in…
+```
+
+**5.** The bot reads all the cookies from the browser, writes them to `session/cookies.json`, and prints:
+```
+  ✓ Session saved (47 cookies).
+  You can now run the bot normally:
+
+      ./run.sh
+```
+The browser closes. You're done.
+
+---
+
+**What does `session/cookies.json` actually contain?**
+
+It's a plain JSON file — you can open it in any text editor to see what's inside. It looks roughly like this:
+
+```json
+[
+  {
+    "name": "dwsid",
+    "value": "Xk92nPqR7mT...",
+    "domain": ".continente.pt",
+    "path": "/",
+    "expires": 1742000000.0,
+    "httpOnly": true,
+    "secure": true,
+    "sameSite": "None"
+  },
+  {
+    "name": "dwanonymous_4f8a",
+    "value": "abcXYZ...",
+    "domain": ".continente.pt"
+  }
+]
+```
+
+There are typically 40–60 cookies. The critical one is `dwsid` — the **Salesforce Commerce Cloud session token** that proves authentication. As long as it's valid, the bot is in.
+
+---
+
+**How the bot uses this file on every run:**
+
+```
+./run.sh
+  │
+  ├─ Chromium starts (headless — invisible)
+  ├─ Loads all cookies from session/cookies.json into the browser
+  ├─ Navigates to continente.pt
+  ├─ Checks for account menu element (logged-in indicator)
+  │     ✓ Found → authenticated, proceed with cart run
+  │     ✗ Not found → session expired → falls back to credentials
+  │
+  └─ After run: saves refreshed cookies back to session/cookies.json
+```
+
+The session check takes about 3 seconds. If the session is valid, the bot never visits the login page.
+
+---
+
+**How long does the session last?**
+
+Continente sessions typically stay valid for **2 to 4 weeks**. If you run the bot regularly, the session refreshes automatically each time — the bot saves updated cookies at the end of every successful run. In practice, as long as you use the bot once a week, you'll never see a session expiry.
+
+If the session expires, the bot will print:
+```
+  [LOGIN] ✗ Saved session has expired or is no longer valid.
+```
+Run `./run.sh --save-session` again. Takes 30 seconds.
+
+---
+
+**Is this safe?**
+
+- `session/cookies.json` is in `.gitignore` — it will **never** be committed to git or uploaded anywhere, even if you push the rest of the project to GitHub.
+- The file lives only at `continente-hero/session/cookies.json` on your local machine.
+- The cookies are sent only to `continente.pt`. You can verify this by running `./run.sh --visible` and watching the browser — it only ever visits continente.pt pages.
+- Treat this file the way you'd treat a saved password: don't share it, don't email it, don't sync it to a public cloud folder.
+
+> 🔁 **Session expired or the bot can't log in?**
+> ```bash
+> ./run.sh --save-session
+> ```
+> Redo the steps above. 30 seconds, done.
+
+---
+
+### Option B — `.env` credentials file
+
+This stores your email and password in a local file that the bot reads at startup. Useful if you prefer fully automated logins without ever opening a browser window.
+
 ```bash
 cp .env.example .env
-open .env
+./edit.sh    # or: nano .env
 ```
+
+Fill in your credentials:
+
 ```env
 CONTINENTE_USER=your@email.com
 CONTINENTE_PASS=yourpassword
 ```
 
+Save and close. On every run, if there are no valid saved cookies, the bot will:
+
+1. Navigate to the continente.pt login page
+2. Fill in your email and password automatically
+3. Submit the form and wait for the redirect
+4. Confirm authentication
+5. Save the resulting cookies to `session/cookies.json`
+
+After that first automated login, the behaviour is identical to Option A — future runs reuse the saved cookies and never touch the password.
+
+> ⚠️ `.env` is in `.gitignore` — never committed to git. But it does contain your plaintext password, so don't share the file or put the project folder in a public location.
+
+---
+
 ### Option C — `config.yaml` fields
+
+Quickest option for a one-off test. Add these two lines to `config.yaml` (outside the `products:` block):
+
 ```yaml
 username: "your@email.com"
 password: "yourpassword"
 ```
-> ⚠️ `config.yaml` is gitignored — never committed. Still, Option A is the safest approach.
+
+> ⚠️ `config.yaml` is also gitignored. But Option A or B are cleaner for regular use.
+
+---
+
+### How the bot decides which method to use
+
+On every run, the decision happens in this exact order:
+
+```
+1. Does session/cookies.json exist?
+      → Load cookies → visit continente.pt → is the account menu visible?
+            YES → authenticated, skip login, start the cart run
+            NO  → session expired, fall through to step 2
+
+2. Is CONTINENTE_USER set? (from .env file or shell export)
+            YES → automated login with those credentials
+            NO  → check config.yaml
+
+3. Is username set in config.yaml?
+            YES → automated login with those credentials
+            NO  → print setup instructions and exit
+```
+
+If you have valid saved cookies, your password is never read or used.
 
 ---
 
@@ -236,10 +408,10 @@ After every run, a report is printed to your terminal and saved to `reports/`:
     → Searching: https://www.continente.pt/pesquisa/?q=bacalhau salgado seco
     → Not found.
 
-  ════════════════════════════════════════════════════════════
+  ══════════════════════════════════════════════════════════════
   CONTINENTE CART — RUN REPORT
   2026-03-22 18:45:01
-  ════════════════════════════════════════════════════════════
+  ══════════════════════════════════════════════════════════════
 
   Total products in list : 8
   ✅  Added to cart       : 6
@@ -283,54 +455,39 @@ By default the browser runs **headless** (invisible). Run with `--visible` to wa
 
 On every run, the bot navigates to `continente.pt` and checks for a logged-in UI element (the account menu). If it finds one, it's authenticated and skips login entirely.
 
-If not, it looks for credentials in this order:
-1. `session/cookies.json` — saved from a previous `--save-session` run
-2. `CONTINENTE_USER` / `CONTINENTE_PASS` environment variables (or `.env` file)
-3. `username` / `password` fields in `config.yaml`
-
 Continente uses a **React SSO system** hosted at `login.continente.pt` — the login form is injected by JavaScript, not static HTML. The bot tries multiple selector strategies to handle this robustly. After any successful login, it refreshes and saves the cookies immediately.
 
 ### Finding products
 
 For each product in your list, the bot chooses the best strategy:
 
-**Direct URL** (`url:` field set) — navigates straight to the product detail page and clicks _Adicionar ao carrinho_. Zero ambiguity. This is the recommended approach for products you buy regularly.
+**Direct URL** (`url:` field set) — navigates straight to the product detail page and clicks _Adicionar ao carrinho_. Zero ambiguity. Recommended for products you buy regularly.
 
 **Search** (`query:` or falling back to `name`) — navigates to `/pesquisa/?q=<term>`, waits for the Salesforce Commerce Cloud tile grid to render, then scans the results:
-- If `brand:` is set, it reads each tile's text and picks the first one that contains the brand name (case-insensitive)
-- If no brand match is found, it logs a warning and uses the first result
-- If there are no results at all, the product is marked `not_found`
+- If `brand:` is set, reads each tile's text and picks the first one matching the brand (case-insensitive)
+- If no brand match, logs a warning and uses the first result
+- If no results at all, marks the product as `not_found`
 
 ### Adding to cart
 
-Once the right product tile (or product page) is found:
-1. The bot checks whether the _Adicionar ao carrinho_ button exists and is **not disabled**. A disabled button means out of stock.
-2. It scrolls the button into view, pauses briefly (to behave like a human), and clicks.
-3. For quantities > 1, it attempts to use the quantity stepper input or the `+` button. If neither works, it logs a warning — you can adjust manually in the cart.
+1. Checks whether _Adicionar ao carrinho_ exists and is **not disabled** (disabled = out of stock)
+2. Scrolls into view, pauses briefly, clicks
+3. For qty > 1, attempts stepper input or `+` button; warns if neither works
 
 ### Failover guarantee
-
-Every product is wrapped in a `try/except`. The four possible outcomes are:
 
 | Status | What happened |
 |---|---|
 | `✅ added` | Successfully in cart |
-| `❌ not_found` | Zero search results, or no add-to-cart button in the tile |
+| `❌ not_found` | Zero search results, or no add-to-cart button |
 | `🚫 out_of_stock` | Button found but disabled |
-| `⚠️ error` | Unexpected exception — timeout, layout change, network issue |
+| `⚠️ error` | Timeout, layout change, network issue |
 
-**No single product failure can stop the run.** The bot processes every item in your list and gives you a complete picture at the end.
-
-### Session persistence
-
-After every successful run, the bot saves the current browser cookies to `session/cookies.json`. This means:
-- Future runs reuse the session without logging in
-- The session stays fresh as long as you run the bot regularly
-- The file is gitignored — it never leaves your machine
+No single failure stops the run. Every product is tried, every outcome reported.
 
 ### Anti-detection
 
-The bot runs with a realistic Chrome user-agent string, sets the locale to `pt-PT`, the timezone to `Europe/Lisbon`, and disables Playwright's automation fingerprint flag. Continente uses Cloudflare and Salesforce behavioral tracking — the session-based approach (logging in once via a real browser) is the cleanest way to stay invisible.
+Realistic Chrome user-agent, `pt-PT` locale, `Europe/Lisbon` timezone, `--disable-blink-features=AutomationControlled`. The session-based approach (logging in once via a real browser) is the cleanest way to stay invisible to Cloudflare and Salesforce tracking.
 
 ---
 
@@ -348,17 +505,14 @@ The bot runs with a realistic Chrome user-agent string, sets the locale to `pt-P
 ./uninstall.sh
 ```
 
-Removes the virtual environment, saved session, run reports, and the downloaded Chromium binary (~170 MB). Keeps `config.yaml` and `.env` intact.
+Removes venv, session, reports, and Chromium (~170 MB). Keeps `config.yaml` and `.env`.
 
 ---
 
 ## 🤝 Contributing
 
-1. Fork the repo
-2. Create a feature branch: `git checkout -b feat/my-feature`
-3. Commit: `git commit -m 'feat: add my feature'`
-4. Push: `git push origin feat/my-feature`
-5. Open a Pull Request
+1. Fork → `git checkout -b feat/my-feature` → commit → push → Pull Request
+2. Issues and ideas welcome at [github.com/paulfxyz/continente-hero/issues](https://github.com/paulfxyz/continente-hero/issues)
 
 ---
 
