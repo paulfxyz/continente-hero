@@ -1,0 +1,32 @@
+# .gitignore — Continente Cart Bot
+
+# Credentials & secrets
+.env
+config.yaml
+
+# Session cookies (contain live auth tokens — never commit)
+session/
+
+# Run reports
+reports/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.so
+
+# Playwright artefacts
+playwright-report/
+test-results/
+
+# macOS
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+*.swp
