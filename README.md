@@ -1,6 +1,6 @@
 # 🦸 continente-hero
 
-[![Version](https://img.shields.io/badge/Version-2.0.4-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
+[![Version](https://img.shields.io/badge/Version-2.1.0-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.11--3.14-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-45ba4b?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/)
 [![macOS](https://img.shields.io/badge/macOS-native-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos/)
@@ -50,7 +50,7 @@ That opens an interactive menu:
 
 ```
   ╔══════════════════════════════════════════════════╗
-  ║   🦸  continente-hero  ·  v2.0.4               ║
+  ║   🦸  continente-hero  ·  v2.1.0               ║
   ╚══════════════════════════════════════════════════╝
 
   Active list: config.yaml
@@ -58,11 +58,12 @@ That opens an interactive menu:
   ──────────────────────────────────────────────────────
 
   1)  🛒  Fill my cart              (run the bot)
-  2)  🔐  Save / refresh session    (log in once)
-  3)  ✏️   Edit shopping list        (opens editor)
-  4)  📂  Manage shopping lists    (select, browse, create)
-  5)  🔄  Update continente-hero    (pull latest)
-  6)  👋  Quit
+  2)  🗑️   Clear my cart             (remove all items)
+  3)  🔐  Save / refresh session    (log in once)
+  4)  ✏️   Edit shopping list        (opens editor)
+  5)  📂  Manage shopping lists    (select, browse, create)
+  6)  🔄  Update continente-hero    (pull latest)
+  7)  👋  Quit
 
   ──────────────────────────────────────────────────────
 
@@ -71,8 +72,8 @@ That opens an interactive menu:
 
 ### First time? Do this in order:
 
-1. **Option 2** — Save your session. A browser window opens on the Continente login page. Log in normally. Press Enter in the Terminal when done. You'll never need to do this again unless your session expires.
-2. **Option 3** — Edit your shopping list. Add your products.
+1. **Option 3** — Save your session. A browser window opens on the Continente login page. Log in normally. Press Enter in the Terminal when done. You'll never need to do this again unless your session expires.
+2. **Option 4** — Edit your shopping list. Add your products.
 3. **Option 1** — Fill your cart. The bot runs silently, adds everything, and prints a report.
 4. Open [continente.pt/checkout/carrinho/](https://www.continente.pt/checkout/carrinho/) and check out.
 
@@ -155,6 +156,21 @@ products:
 
 ---
 
+---
+
+## 🗑️ Clear your cart
+
+Loaded the wrong list? Run the bot twice by accident? **Option 2** empties your entire cart in one shot.
+
+```
+shop  →  2) 🗑️  Clear my cart
+```
+
+A browser window opens so you can **watch every item disappear** and confirm the cart is empty before closing. The bot removes items one by one, waiting for each removal to complete before clicking the next — this handles SFCC's React re-renders correctly.
+
+> After clearing, run **Option 1** to refill from whichever list is active.
+
+
 ## 🗂️ Multiple shopping lists
 
 You can maintain multiple lists (weekly groceries, party supplies, etc.) and switch between them from the `shop` menu (**Option 4**).
@@ -172,7 +188,7 @@ Lists are stored in the `configs/` folder:
 
 **How it works:**
 
-1. Open `shop`, choose **Option 4 — Manage shopping lists**
+1. Open `shop`, choose **Option 5 — Manage shopping lists**
 2. Pick a sub-option:
    - **✅ Select active list** — numbered picker, shows which list is currently active with a `● active` marker
    - **📂 Open lists folder** — opens `configs/` in Finder so you can browse, rename, duplicate or delete lists like any normal files
