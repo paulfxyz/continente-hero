@@ -67,6 +67,7 @@ BASE_URL   = "https://www.continente.pt"
 LOGIN_URL  = f"{BASE_URL}/login/"
 SEARCH_URL = f"{BASE_URL}/pesquisa/?q="
 CART_URL   = f"{BASE_URL}/checkout/carrinho/"
+CLEAR_TIMEOUT = 8_000   # per-item removal timeout — generous for SFCC re-renders
 
 # ── Timeouts (ms) ─────────────────────────────────────────────────────────────
 NAV_TIMEOUT     = 30_000   # page navigation
@@ -590,6 +591,100 @@ class ContinenteBot:
                 continue
         return None
 
+    # ── Clear cart ────────────────────────────────────────────────────────────
+
+    async def clear_cart(self) -> int:
+        """
+        Navigate to the cart page and remove every item.
+
+        SFCC cart behaviour on continente.pt
+        ------------------------------------
+        The cart is a React SPA. Clicking a remove button triggers an XHR
+        request and then re-renders the item list in place — it does NOT
+        do a full page reload. This means we must:
+
+          1. After each removal, wait for the DOM to settle before looking
+             for the next remove button (the old NodeList is stale).
+          2. Query for remove buttons fresh on every iteration rather than
+             collecting them all upfront.
+          3. Accept that the selectors may vary between SFCC themes —
+             we try four known patterns in priority order.
+          4. Cap iterations at 50 to avoid an infinite loop if the DOM
+             never reaches an empty state for any reason.
+
+        Returns the number of items removed.
+        """
+        print("\n  [CLEAR CART] Navigating to cart…")
+        await self._page.goto(CART_URL, timeout=NAV_TIMEOUT)
+        await self._page.wait_for_load_state("domcontentloaded")
+        await self._dismiss_cookies()
+
+        # Give React time to render the cart items
+        await self._page.wait_for_timeout(2_000)
+
+        # Selectors for the remove / delete button on a cart line item.
+        # We try them in order — first match wins on each iteration.
+        REMOVE_SELECTORS = [
+            "button.remove-product",                           # SFCC default theme
+            "button[data-action='remove']",                    # data-action variant
+            ".cart-item__remove button",                       # nested button
+            "button.btn-remove-item",                          # alternative class
+            "button[aria-label='Remover']",                    # aria-label (PT)
+            "button[aria-label='Remove']",                     # aria-label (EN)
+            ".product-info__remove button",                    # product-info block
+            "[data-action='remove-product'] button",           # wrapper + button
+            ".ct-cart-item__remove button",                    # ct- prefix theme
+            "button.icon-close[data-pid]",                     # icon close with pid
+        ]
+
+        removed = 0
+        max_iterations = 50  # safety cap
+
+        for _ in range(max_iterations):
+            # Re-query on every loop — the DOM is re-rendered after each removal
+            btn = None
+            for sel in REMOVE_SELECTORS:
+                try:
+                    btn = await self._page.query_selector(sel)
+                    if btn:
+                        break
+                except Exception:  # noqa: BLE001
+                    continue
+
+            if not btn:
+                # No more remove buttons found — cart is empty (or was already)
+                break
+
+            try:
+                await btn.scroll_into_view_if_needed()
+                await self._page.wait_for_timeout(400)
+                await btn.click()
+
+                # Wait for the DOM to update before the next iteration.
+                # We wait for the button we just clicked to detach (disappear)
+                # from the DOM, which confirms SFCC has processed the removal.
+                # Fallback: a fixed 1.5 s wait covers cases where the element
+                # detaches instantly or the selector changes.
+                try:
+                    await btn.wait_for_element_state("detached", timeout=CLEAR_TIMEOUT)
+                except Exception:  # noqa: BLE001
+                    await self._page.wait_for_timeout(1_500)
+
+                removed += 1
+                print(f"    → Removed item {removed}")
+
+            except Exception as exc:  # noqa: BLE001
+                # If a click fails, stop rather than loop forever
+                print(f"    [WARN] Could not click remove button: {exc}")
+                break
+
+        if removed == 0:
+            print("  [CLEAR CART] Cart was already empty — nothing to remove.")
+        else:
+            print(f"  [CLEAR CART] ✅ Removed {removed} item(s). Cart is now empty.")
+
+        return removed
+
     # ── Main run ──────────────────────────────────────────────────────────────
 
     async def run(self) -> None:
@@ -770,6 +865,24 @@ async def main() -> None:
     # CLI flags
     if "--save-session" in sys.argv:
         await save_session_interactive(cfg)
+        return
+
+    if "--clear-cart" in sys.argv:
+        # Clear-cart runs with a visible browser so the user can watch
+        # items disappear and verify the cart is actually empty.
+        # Headless would work too, but visible builds trust.
+        cfg["headless"] = "--headless" in sys.argv  # default: visible
+        async with ContinenteBot(cfg) as bot:
+            if not await bot.login():
+                print("\n  [ABORT] Cannot proceed without authentication.\n")
+                sys.exit(1)
+            removed = await bot.clear_cart()
+            save_session(await bot._context.cookies())
+            # Navigate to the now-empty cart so the user can confirm
+            await bot._page.goto(CART_URL, timeout=NAV_TIMEOUT)
+            if not cfg["headless"]:
+                await bot._page.wait_for_timeout(3_000)
+        print(f"\n  Cart cleared — {removed} item(s) removed.\n")
         return
 
     if "--visible" in sys.argv:
