@@ -35,7 +35,7 @@ VENV_DIR="$SCRIPT_DIR/.venv"
 
 echo ""
 echo "══════════════════════════════════════════════════════════════"
-echo "  CONTINENTE HERO — Update  (v2.1.2)"
+echo "  CONTINENTE HERO — Update  (v2.1.3)"
 echo "══════════════════════════════════════════════════════════════"
 
 # ── 1. Pull latest from GitHub ────────────────────────────────────────────────
