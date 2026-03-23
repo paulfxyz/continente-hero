@@ -1,6 +1,6 @@
 # 🦸 continente-hero
 
-[![Version](https://img.shields.io/badge/Version-2.0.0-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
+[![Version](https://img.shields.io/badge/Version-2.0.1-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.11--3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-45ba4b?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/)
 [![macOS](https://img.shields.io/badge/macOS-native-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos/)
@@ -50,7 +50,7 @@ That opens an interactive menu:
 
 ```
   ╔══════════════════════════════════════════════════╗
-  ║   🦸  continente-hero  ·  v2.0                  ║
+  ║   🦸  continente-hero  ·  v2.0.1               ║
   ╚══════════════════════════════════════════════════╝
 
   Active list: config.yaml
@@ -338,6 +338,146 @@ After each run, a timestamped report is saved to `reports/` and printed in the t
   5 products  ·  4 added  ·  1 skipped
 ══════════════════════════════════════════════════════════════
 ```
+
+---
+
+## 🧱 Challenges, bottlenecks & how we solved them
+
+This section documents the hard problems encountered while building continente-hero — the kind of things that don't appear in any tutorial. If you're building a similar macOS automation tool, this is the part worth reading carefully.
+
+---
+
+### 1. The `curl | bash` stdin pipe contamination bug
+
+**Problem:** The recommended way to distribute a shell installer is `curl -fsSL URL | bash`. When you pipe into bash, bash reads its script from **stdin** — the same file descriptor that the curl pipe is writing to. Any program run inside the script that writes to **stdout** also writes to that same pipe, and bash attempts to interpret it as shell commands.
+
+`brew install python@3.13` outputs several hundred lines including:
+- Download progress
+- Path configuration advice
+- Text like `section "3 / 6 Repository"` — which contains our actual script section headers
+- Shell-looking fragments like `export PATH=...`
+
+Bash read all of this as commands and either executed them as garbage or exited with an error. Symptoms varied: the installer appeared to complete but the `shop` alias was never written; the script printed brew output mid-section; a variable like `section` was invoked as a command and returned `command not found`.
+
+**Fix:** Add `>&2` to every external command that writes to stdout:
+
+```bash
+brew install python@3.13 >&2
+git clone "$REPO_URL" "$CONTINENTE_DIR" >&2
+git reset --hard origin/main >&2
+pip install -r requirements.txt >&2
+"$VENV_DIR/bin/playwright" install chromium >&2
+```
+
+Redirecting stdout to stderr (`>&2`) means those outputs appear on the terminal (stderr is always shown), but they are **not** fed back into the curl pipe that bash is reading. Stdin stays clean. This is the canonical fix for any `curl | bash` installer that runs subprocesses.
+
+---
+
+### 2. `${answer,,}` bashism crashing under `/bin/sh`
+
+**Problem:** `${var,,}` is a bash-only lowercase expansion. macOS's `/bin/sh` is actually dash, not bash. Some environments (and `curl | bash` if the shebang is missing or wrong) invoke the script under dash, which treats `${answer,,}` as a syntax error and exits immediately.
+
+**Fix:** Replaced all lowercase expansions with explicit comparisons:
+```bash
+# Before (bash-only):
+if [[ "${answer,,}" == "y" ]]; then
+
+# After (POSIX-safe):
+if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+```
+
+---
+
+### 3. `SCRIPT_DIR` double-nesting under non-bash shells
+
+**Problem:** The standard pattern for getting a script's own directory is:
+```bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+```
+`${BASH_SOURCE[0]}` is bash-only. Under dash/sh it expands to empty string, so `dirname ""` returns `.`, and the script resolves relative to whatever the current working directory happens to be — which is wrong when launched via `curl | bash` from `/`.
+
+**Fix:** Use the POSIX fallback:
+```bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+```
+`$0` is POSIX-standard and always contains the script path.
+
+---
+
+### 4. `playwright: command not found` after venv activation
+
+**Problem:** After `source .venv/bin/activate`, the `playwright` binary is on `PATH` inside an interactive shell. But `curl | bash` runs in a non-interactive subshell that doesn't fully source the venv activation — or in zsh, PATH changes in a subshell are not always inherited. The bare `playwright` command would silently fail or not be found.
+
+**Fix:** Always use the full absolute path to the venv binary:
+```bash
+"$VENV_DIR/bin/playwright" install chromium >&2
+```
+No PATH manipulation needed. Works in every shell and every invocation context.
+
+---
+
+### 5. `permission denied: ./run.sh` after git clone
+
+**Problem:** `git clone` does not preserve execute bits from the remote. A freshly cloned repo has all `.sh` files as mode `644` (read/write, no execute). Running `./run.sh` or `./shop.sh` immediately fails with `permission denied`.
+
+**Fix:** The very first step of every installer is:
+```bash
+chmod +x "$CONTINENTE_DIR"/*.sh
+```
+This runs before anything else, so by the time the user touches any script, all `.sh` files are executable.
+
+---
+
+### 6. Stale `.venv` with wrong Python on reinstall
+
+**Problem:** If a user had previously installed with Python 3.11 (or 3.14), the `.venv` exists pointing to that Python binary. Running `install.sh` or `setup.sh` again would reuse the stale venv instead of rebuilding for the correct Python version, causing mysterious import errors.
+
+**Fix:** The installer always deletes and rebuilds the venv:
+```bash
+rm -rf "$VENV_DIR"
+python3.13 -m venv "$VENV_DIR"
+```
+A clean venv is always faster than debugging a corrupted one.
+
+---
+
+### 7. `git pull` aborted by local `chmod +x` changes
+
+**Problem:** After install, local `.sh` files have their execute bit set (mode `755`). The remote files are mode `644`. `git pull` sees this as a local modification and refuses to pull when there's a conflict, printing `error: Your local changes to the following files would be overwritten by merge`.
+
+**Fix:** The update flow uses `git fetch` + `git reset --hard origin/main` instead of `git pull`:
+```bash
+git fetch origin >&2
+git reset --hard origin/main >&2
+```
+`reset --hard` discards all local changes unconditionally. The chmod step that follows re-applies execute bits on the freshly reset files.
+
+---
+
+### 8. Python version parsing returning the patch number
+
+**Problem:** The original version check used:
+```bash
+ver=$(python3 -c "import sys; print(sys.version_info.minor)")
+```
+This returned the minor version (e.g. `13` for 3.13), but an earlier version used `${ver##*.}` string manipulation on the full `3.13.2` output string — `##*.` strips everything up to and including the last dot, returning `2` (the patch), not `13` (the minor). So Python 3.13.2 was evaluated as "version 2" and passed the `>= 11` check for the wrong reasons.
+
+**Fix:** Read both major and minor as separate integers:
+```bash
+read major minor <<< $(python3 -c "import sys as v; print(v.version_info.major, v.version_info.minor)")
+```
+Then check both:
+```bash
+if [ "$major" -eq 3 ] && [ "$minor" -ge 11 ] && [ "$minor" -le 13 ]; then
+```
+
+---
+
+### 9. Salesforce Commerce Cloud (SFCC) as the automation target
+
+Continente.pt runs on Salesforce Commerce Cloud (formerly Demandware). The platform is a React SPA — there is no server-rendered HTML to parse. Every product tile, cart button, and search result is rendered by JavaScript after the page loads. This rules out simple HTTP clients like `requests` or `httpx`.
+
+Playwright with Chromium is the right tool: it runs a real browser engine, waits for JS to render, clicks actual DOM elements, and handles network requests exactly as a human session would. Anti-detection mitigations (real Chrome user-agent, `--disable-blink-features=AutomationControlled`, `pt-PT` locale, Europe/Lisbon timezone) are included because SFCC has bot-detection logic built into its session handling.
 
 ---
 
