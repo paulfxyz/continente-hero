@@ -69,9 +69,9 @@ SEARCH_URL = f"{BASE_URL}/pesquisa/?q="
 CART_URL   = f"{BASE_URL}/checkout/carrinho/"
 
 # ── Timeouts (ms) ─────────────────────────────────────────────────────────────
-NAV_TIMEOUT     = 30_000
-ELEMENT_TIMEOUT = 15_000
-ACTION_PAUSE    = 1_000
+NAV_TIMEOUT     = 30_000   # page navigation
+ELEMENT_TIMEOUT = 15_000   # waitForSelector
+ACTION_PAUSE    = 1_000    # polite delay between cart actions
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -82,10 +82,10 @@ ACTION_PAUSE    = 1_000
 class ProductConfig:
     """One entry from the config.yaml shopping list."""
     name:     str
-    query:    str
+    query:    str            # search term (defaults to name)
     quantity: int   = 1
-    url:      Optional[str] = None
-    brand:    Optional[str] = None
+    url:      Optional[str] = None   # direct product page URL
+    brand:    Optional[str] = None   # prefer this brand in search results
 
 
 @dataclass
@@ -94,6 +94,7 @@ class ProductResult:
     name:     str
     query:    str
     quantity: int
+    # "added" | "not_found" | "out_of_stock" | "error"
     status:   str = "error"
     detail:   str = ""
     pid:      Optional[str] = None
@@ -177,6 +178,8 @@ class ContinenteBot:
         self._context:    Optional[BrowserContext] = None
         self._page:       Optional[Page]           = None
 
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
     async def __aenter__(self):
         self._playwright = await async_playwright().start()
         self._browser = await self._playwright.chromium.launch(
@@ -184,6 +187,7 @@ class ContinenteBot:
             slow_mo  = self.slow_mo,
             args     = [
                 "--no-sandbox",
+                # Mask Playwright's automation fingerprint
                 "--disable-blink-features=AutomationControlled",
             ],
         )
@@ -197,10 +201,13 @@ class ContinenteBot:
             locale       = "pt-PT",
             timezone_id  = "Europe/Lisbon",
         )
+
+        # Restore saved session cookies if available
         saved = load_session()
         if saved:
             await self._context.add_cookies(saved)
             print("  [SESSION] Loaded saved cookies.")
+
         self._page = await self._context.new_page()
         return self
 
@@ -208,11 +215,18 @@ class ContinenteBot:
         if self._browser:    await self._browser.close()
         if self._playwright: await self._playwright.stop()
 
+    # ── Authentication ────────────────────────────────────────────────────────
+
     async def _is_logged_in(self) -> bool:
+        """
+        Navigate to the homepage and check for any element that only
+        appears when the user is authenticated.
+        """
         await self._page.goto(BASE_URL, timeout=NAV_TIMEOUT)
         await self._page.wait_for_load_state("domcontentloaded")
         try:
             await self._page.wait_for_selector(
+                # Multiple known selectors for the logged-in account nav area
                 "a[href*='/conta/'], .ct-header--user-logged, "
                 "[data-user-logged], .ct-user-info--name",
                 timeout=7_000,
@@ -224,42 +238,41 @@ class ContinenteBot:
     async def login(self) -> bool:
         """
         Authenticate the session.
-        Priority: saved cookies → env vars / .env → config.yaml credentials.
-        Returns True on success.
+
+        Priority order:
+          1. Saved cookies (session/cookies.json) — skip full login if valid.
+          2. Environment variables / .env file    — CONTINENTE_USER / CONTINENTE_PASS.
+          3. config.yaml username / password fields.
+
+        Returns True on success, False on failure.
         """
-        print("
-  [LOGIN] Checking session…")
+        print("\n  [LOGIN] Checking session…")
 
         if await self._is_logged_in():
             print("  [LOGIN] ✓ Authenticated via saved session.")
             save_session(await self._context.cookies())
             return True
 
-        username = os.getenv("CONTINENTE_USER") or self.cfg.get("username", "")
-        password = os.getenv("CONTINENTE_PASS") or self.cfg.get("password", "")
+        # ── Resolve credentials ───────────────────────────────────────────────
+        username = (
+            os.getenv("CONTINENTE_USER")
+            or self.cfg.get("username", "")
+        )
+        password = (
+            os.getenv("CONTINENTE_PASS")
+            or self.cfg.get("password", "")
+        )
 
         if not username or not password:
             print(
-                "
-  [LOGIN] ✗ No credentials found.
-"
-                "
-  Options:
-"
-                "    A) Run once with a visible browser to save your session:
-"
-                "         python continente.py --save-session
-"
-                "
-    B) Set credentials in .env:
-"
-                "         CONTINENTE_USER=your@email.com
-"
-                "         CONTINENTE_PASS=yourpassword
-"
-                "
-    C) Set 'username' / 'password' in config.yaml
-"
+                "\n  [LOGIN] ✗ No credentials found.\n"
+                "\n  Options:\n"
+                "    A) Run once with a visible browser to save your session:\n"
+                "         python continente.py --save-session\n"
+                "\n    B) Set credentials in .env:\n"
+                "         CONTINENTE_USER=your@email.com\n"
+                "         CONTINENTE_PASS=yourpassword\n"
+                "\n    C) Set 'username' / 'password' in config.yaml\n"
             )
             return False
 
@@ -267,6 +280,8 @@ class ContinenteBot:
         await self._page.goto(LOGIN_URL, timeout=NAV_TIMEOUT)
         await self._page.wait_for_load_state("networkidle", timeout=NAV_TIMEOUT)
 
+        # The SSO form is a React SPA injected by login.continente.pt —
+        # we try multiple selector patterns to handle layout changes.
         email_field = await self._find_first([
             "input[name='loginEmail']",
             "input[name='email']",
@@ -294,6 +309,7 @@ class ContinenteBot:
         await password_field.fill(password)
         await self._page.wait_for_timeout(350)
 
+        # Submit the form
         submit = await self._find_first([
             "button[type='submit']",
             "button:has-text('Entrar')",
@@ -306,10 +322,11 @@ class ContinenteBot:
         else:
             await password_field.press("Enter")
 
+        # Wait for redirect back to continente.pt
         try:
             await self._page.wait_for_url(f"{BASE_URL}/**", timeout=20_000)
         except PlaywrightTimeoutError:
-            pass
+            pass  # Some SSO flows keep the same URL — check auth state anyway
 
         if await self._is_logged_in():
             print("  [LOGIN] ✓ Login successful.")
@@ -319,24 +336,36 @@ class ContinenteBot:
         print("  [LOGIN] ✗ Login failed — double-check your credentials.")
         return False
 
+    # ── Product adding ────────────────────────────────────────────────────────
+
     async def add_product(self, product: ProductConfig) -> ProductResult:
         """
         Attempt to find and add one product to the cart.
-        Never raises — all failures are captured in the returned ProductResult.
 
         Strategy:
-          A) Direct URL  → _add_from_pdp()
-          B) Search      → _add_from_search()
+          A) If product.url is provided → go directly to the product page (PDP).
+          B) Otherwise                  → search for product.query.
+
+        Failover guarantees:
+          - No search results       → status "not_found"
+          - Button disabled         → status "out_of_stock"
+          - Any network / timeout   → status "error"  (never raises)
+          - Brand filter miss       → logs a warning, uses first result
         """
-        result = ProductResult(name=product.name, query=product.query, quantity=product.quantity)
+        result = ProductResult(
+            name=product.name, query=product.query, quantity=product.quantity
+        )
 
         try:
+            # ── A: Direct URL ─────────────────────────────────────────────────
             if product.url:
                 await self._page.goto(product.url, timeout=NAV_TIMEOUT)
                 await self._page.wait_for_load_state("domcontentloaded")
                 if await self._add_from_pdp(product, result):
                     return result
+                # PDP add failed — fall through to search as a backup
 
+            # ── B: Search ─────────────────────────────────────────────────────
             await self._add_from_search(product, result)
 
         except PlaywrightTimeoutError as exc:
@@ -344,31 +373,39 @@ class ContinenteBot:
             result.detail = f"Navigation timeout: {exc}"
             print(f"    → Timeout.")
 
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — intentional catch-all
             result.status = "error"
             result.detail = f"Unexpected error: {exc}"
             print(f"    → Error: {exc}")
 
         return result
 
-    async def _add_from_pdp(self, product: ProductConfig, result: ProductResult) -> bool:
-        """Add from Product Detail Page. Returns True on success or definitive out-of-stock."""
+    async def _add_from_pdp(
+        self, product: ProductConfig, result: ProductResult
+    ) -> bool:
+        """
+        Add from a Product Detail Page. Mutates result in place.
+        Returns True on success so the caller can skip the search fallback.
+        """
         try:
             atc = await self._page.wait_for_selector(
                 "button.add-to-cart, button[aria-label='Adicionar ao carrinho']",
                 timeout=ELEMENT_TIMEOUT,
             )
         except PlaywrightTimeoutError:
-            return False
+            return False  # No ATC button found → try search path
 
         if await atc.get_attribute("disabled") is not None:
             result.status = "out_of_stock"
             result.detail = "Add-to-cart button is disabled on product page."
             print(f"    → Out of stock.")
-            return True
+            return True  # Definitively out of stock — no point searching
 
+        # Grab PID for the report
         try:
-            result.pid = await self._page.eval_on_selector("[data-pid]", "el => el.dataset.pid")
+            result.pid = await self._page.eval_on_selector(
+                "[data-pid]", "el => el.dataset.pid"
+            )
         except Exception:  # noqa: BLE001
             pass
 
@@ -385,13 +422,22 @@ class ContinenteBot:
         print(f"    → ✅ Added (pid={result.pid})")
         return True
 
-    async def _add_from_search(self, product: ProductConfig, result: ProductResult) -> None:
-        """Search for the product and add the best matching tile."""
+    async def _add_from_search(
+        self, product: ProductConfig, result: ProductResult
+    ) -> None:
+        """
+        Search for the product and add the best matching tile.
+        Mutates result in place.
+        """
         url = f"{SEARCH_URL}{product.query}"
         print(f"    → Searching: {url}")
         await self._page.goto(url, timeout=NAV_TIMEOUT)
         await self._page.wait_for_load_state("domcontentloaded")
+
+        # Dismiss cookie banner on first run
         await self._dismiss_cookies()
+
+        # Wait briefly for JS-rendered tiles
         await self._page.wait_for_timeout(1_500)
 
         tiles = await self._page.query_selector_all(".ct-product-tile")
@@ -402,17 +448,24 @@ class ContinenteBot:
             print(f"    → Not found.")
             return
 
+        # Pick the best tile (brand-filtered or first)
         tile = await self._best_tile(tiles, product)
         if tile is None:
             result.status = "not_found"
-            result.detail = f"Brand filter '{product.brand}' matched nothing for query '{product.query}'."
+            result.detail = (
+                f"Brand filter '{product.brand}' matched nothing "
+                f"for query '{product.query}' (and fallback was disabled)."
+            )
             print(f"    → No brand match.")
             return
 
         result.pid = await tile.get_attribute("data-pid")
 
+        # Locate ATC button within the tile
         atc = await tile.query_selector(
-            "button.add-to-cart, button.js-add-to-cart, button[aria-label='Adicionar ao carrinho']"
+            "button.add-to-cart, "
+            "button.js-add-to-cart, "
+            "button[aria-label='Adicionar ao carrinho']"
         )
 
         if not atc:
@@ -421,6 +474,7 @@ class ContinenteBot:
             print(f"    → No ATC button in tile.")
             return
 
+        # Check disabled / out-of-stock state
         disabled = await atc.get_attribute("disabled")
         classes  = await atc.get_attribute("class") or ""
         if disabled is not None or "disabled" in classes.split():
@@ -429,6 +483,7 @@ class ContinenteBot:
             print(f"    → Out of stock.")
             return
 
+        # Add to cart
         await atc.scroll_into_view_if_needed()
         await self._page.wait_for_timeout(ACTION_PAUSE)
         await atc.click()
@@ -442,7 +497,13 @@ class ContinenteBot:
         result.detail = f"Added via search '{product.query}' (pid={result.pid}, qty={product.quantity})"
 
     async def _best_tile(self, tiles, product: ProductConfig):
-        """Pick best tile — brand-filtered if specified, first result otherwise."""
+        """
+        Pick the most relevant product tile from search results.
+
+        If product.brand is set, scan tile text for a match (case-insensitive).
+        Falls back to the first tile with a warning — never returns None
+        unless the tiles list is empty.
+        """
         if not product.brand:
             return tiles[0]
 
@@ -452,15 +513,26 @@ class ContinenteBot:
             if brand_lower in text:
                 return tile
 
-        print(f"    [WARN] Brand '{product.brand}' not found for '{product.query}' — using first result.")
+        # Brand not found — fall back to first result gracefully
+        print(
+            f"    [WARN] Brand '{product.brand}' not found in results "
+            f"for '{product.query}' — using first result."
+        )
         return tiles[0]
 
     async def _set_quantity(self, pid: Optional[str], quantity: int) -> None:
-        """Best-effort quantity adjustment. Never blocks the main flow."""
+        """
+        Best-effort quantity adjustment after adding to cart.
+        Never blocks the main flow — logs a warning on failure.
+        """
         try:
             pid_filter = f"[data-pid='{pid}']" if pid else ""
+
+            # Try direct number input first
             qty_input = await self._page.query_selector(
-                f"input.quantity-stepper{pid_filter}, input.quantity{pid_filter}, .quantity-form input[type='number']"
+                f"input.quantity-stepper{pid_filter}, "
+                f"input.quantity{pid_filter}, "
+                ".quantity-form input[type='number']"
             )
             if qty_input:
                 await qty_input.triple_click()
@@ -468,8 +540,11 @@ class ContinenteBot:
                 await qty_input.press("Enter")
                 return
 
+            # Otherwise click the + button (quantity − 1) times
             plus = await self._page.query_selector(
-                f"button.quantity-increase{pid_filter}, .btn-quantity-plus{pid_filter}, {pid_filter} .icon-plus"
+                f"button.quantity-increase{pid_filter}, "
+                f".btn-quantity-plus{pid_filter}, "
+                f"{pid_filter} .icon-plus"
             )
             if plus:
                 for _ in range(quantity - 1):
@@ -477,10 +552,16 @@ class ContinenteBot:
                     await self._page.wait_for_timeout(300)
 
         except Exception:  # noqa: BLE001
-            print(f"    [WARN] Could not set qty={quantity} for pid={pid}. Adjust manually in cart.")
+            print(
+                f"    [WARN] Could not set qty={quantity} for pid={pid}. "
+                "Adjust manually in cart."
+            )
 
     async def _dismiss_cookies(self) -> None:
-        """Dismiss GDPR cookie banner if present. Silently skips if not found."""
+        """
+        Dismiss the GDPR / cookie consent banner if it appears.
+        Silently no-ops if no banner is found.
+        """
         for sel in [
             "button#onetrust-accept-btn-handler",
             "button.accept-cookies",
@@ -499,7 +580,7 @@ class ContinenteBot:
                 continue
 
     async def _find_first(self, selectors: list[str], timeout: int = 5_000):
-        """Try each selector in order, return first element found."""
+        """Try each selector in order and return the first element found."""
         for sel in selectors:
             try:
                 el = await self._page.wait_for_selector(sel, timeout=timeout)
@@ -509,51 +590,54 @@ class ContinenteBot:
                 continue
         return None
 
+    # ── Main run ──────────────────────────────────────────────────────────────
+
     async def run(self) -> None:
         """Login → iterate all products → save session → open cart."""
         _banner("CONTINENTE CART BOT")
 
         if not await self.login():
-            print("
-  [ABORT] Cannot proceed without authentication.
-")
+            print("\n  [ABORT] Cannot proceed without authentication.\n")
             sys.exit(1)
 
-        print(f"
-  Processing {len(self.products)} product(s)…
-")
+        print(f"\n  Processing {len(self.products)} product(s)…\n")
 
         for i, product in enumerate(self.products, 1):
-            print(f"  [{i}/{len(self.products)}] {product.name!r}  (qty: {product.quantity})")
+            label = f"[{i}/{len(self.products)}]"
+            print(f"  {label} {product.name!r}  (qty: {product.quantity})")
             result = await self.add_product(product)
             self.results.append(result)
             await self._page.wait_for_timeout(600)
 
+        # Persist fresh cookies after a successful run
         save_session(await self._context.cookies())
 
-        print(f"
-  [DONE] Opening cart → {CART_URL}")
+        # Navigate to cart for the user to review
+        print(f"\n  [DONE] Opening cart → {CART_URL}")
         await self._page.goto(CART_URL, timeout=NAV_TIMEOUT)
         await self._page.wait_for_load_state("domcontentloaded")
 
+        # Keep the window open a few seconds so the user can see it
         if not self.headless:
             await self._page.wait_for_timeout(4_000)
 
+    # ── Report ────────────────────────────────────────────────────────────────
+
     def report(self) -> str:
-        """Build, print, and save a timestamped run report."""
+        """
+        Build a human-readable run report, print it, and save it to
+        reports/report-<timestamp>.txt.
+        """
         ts      = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         added   = [r for r in self.results if r.status == "added"]
         missing = [r for r in self.results if r.status == "not_found"]
         oos     = [r for r in self.results if r.status == "out_of_stock"]
         errors  = [r for r in self.results if r.status == "error"]
 
-        W = 62
+        W = 62   # report width
 
         def h(title: str) -> str:
-            return f"
-  {'─' * (W - 4)}
-  {title}
-  {'─' * (W - 4)}"
+            return f"\n  {'─' * (W - 4)}\n  {title}\n  {'─' * (W - 4)}"
 
         lines = [
             "",
@@ -601,14 +685,13 @@ class ContinenteBot:
             "",
         ]
 
-        text = "
-".join(lines)
+        text = "\n".join(lines)
 
+        # Save timestamped report
         REPORTS_DIR.mkdir(exist_ok=True)
         report_path = REPORTS_DIR / f"report-{datetime.now().strftime('%Y%m%d-%H%M%S')}.txt"
         report_path.write_text(text, encoding="utf-8")
-        print(f"
-  [REPORT] Saved → {report_path}")
+        print(f"\n  [REPORT] Saved → {report_path}")
 
         return text
 
@@ -620,17 +703,15 @@ class ContinenteBot:
 async def save_session_interactive(cfg: dict) -> None:
     """
     Open a visible Chromium window at the login page.
-    User logs in manually; press Enter when done.
-    Cookies saved to session/cookies.json for all future runs.
+    The user logs in manually; press Enter in the terminal when done.
+    Cookies are saved to session/cookies.json for all future runs.
 
     Usage: python continente.py --save-session
     """
     _banner("SAVE SESSION")
     print(
-        "  A browser window will open at the continente.pt login page.
-"
-        "  Log in with your account, then come back here and press Enter.
-"
+        "  A browser window will open at the continente.pt login page.\n"
+        "  Log in with your account, then come back here and press Enter.\n"
     )
     input("  Press Enter to open the browser… ")
     print()
@@ -646,26 +727,18 @@ async def save_session_interactive(cfg: dict) -> None:
     await page.goto(LOGIN_URL)
 
     print("  → Browser is open. Log in to continente.pt.")
-    print("  → Once you see your account / homepage, come back here.
-")
+    print("  → Once you see your account / homepage, come back here.\n")
     input("  Press Enter once you are logged in… ")
 
     cookies = await context.cookies()
     save_session(cookies)
 
     print(
-        f"
-  ✓ Session saved ({len(cookies)} cookies).
-"
-        "  You can now run the bot normally:
-
-"
-        "      python continente.py
-"
-        "      — or —
-"
-        "      ./run.sh
-"
+        f"\n  ✓ Session saved ({len(cookies)} cookies).\n"
+        "  You can now run the bot normally:\n\n"
+        "      python continente.py\n"
+        "      — or —\n"
+        "      ./run.sh\n"
     )
 
     await browser.close()
@@ -677,16 +750,13 @@ async def save_session_interactive(cfg: dict) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _banner(title: str) -> None:
-    print("
-" + "═" * 64)
+    print("\n" + "═" * 64)
     print(f"  {title}")
     print("═" * 64)
 
 
 def _die(msg: str) -> None:
-    print(f"
-  [ERROR] {msg}
-")
+    print(f"\n  [ERROR] {msg}\n")
     sys.exit(1)
 
 
@@ -697,6 +767,7 @@ def _die(msg: str) -> None:
 async def main() -> None:
     cfg = load_config()
 
+    # CLI flags
     if "--save-session" in sys.argv:
         await save_session_interactive(cfg)
         return
