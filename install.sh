@@ -145,7 +145,27 @@ fi
 section "[ 3 / 5 ]  Virtual environment…"
 
 if [[ -d "$VENV_DIR" ]]; then
-    warn ".venv already exists — skipping creation. Run ./update.sh to refresh."
+    # Check whether the existing venv was built with the same Python we just
+    # selected. If Python changed (e.g. user had 3.14, now has 3.13) the old
+    # venv must be removed — mixing interpreters corrupts native extensions.
+    VENV_PYTHON="$VENV_DIR/bin/python"
+    VENV_VER=""
+    if [[ -x "$VENV_PYTHON" ]]; then
+        VENV_VER=$("$VENV_PYTHON" -c \
+            "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || true)
+    fi
+
+    WANT_VER=$("$PYTHON_BIN" -c \
+        "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+
+    if [[ "$VENV_VER" != "$WANT_VER" ]]; then
+        warn "Existing .venv was built with Python $VENV_VER — need $WANT_VER. Rebuilding…"
+        rm -rf "$VENV_DIR"
+        "$PYTHON_BIN" -m venv "$VENV_DIR"
+        info "Rebuilt virtual environment with Python $WANT_VER"
+    else
+        info ".venv already exists with Python $VENV_VER — reusing"
+    fi
 else
     "$PYTHON_BIN" -m venv "$VENV_DIR"
     info "Created virtual environment at .venv"
