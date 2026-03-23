@@ -1,3 +1,107 @@
+## 🔖 [2.1.0] — 2026-03-23
+
+### ✨ Feature — Option 2: Clear my cart
+
+New menu option that empties your entire Continente cart in one step. Useful when you loaded the wrong shopping list and want a clean slate before re-running the bot.
+
+```
+📂  shop menu
+
+  1)  🛒  Fill my cart              (run the bot)
+  2)  🗑️   Clear my cart             (remove all items)   ← NEW
+  3)  🔐  Save / refresh session    (log in once)
+  4)  ✏️   Edit shopping list        (opens editor)
+  5)  📂  Manage shopping lists    (select, browse, create)
+  6)  🔄  Update continente-hero    (pull latest)
+  7)  👋  Quit
+```
+
+---
+
+#### How it works
+
+The shell menu option calls `python continente.py --clear-cart`, which:
+
+1. Logs in via saved session cookies
+2. Navigates to `https://www.continente.pt/checkout/carrinho/`
+3. Dismisses the cookie banner if present
+4. Iterates: find a remove button → click it → wait for it to detach from the DOM → repeat
+5. Stops when no more remove buttons are found (cart is empty)
+6. Saves refreshed session cookies
+
+Runs with a **visible browser** by default — not because headless wouldn't work, but because watching items disappear builds trust that it actually worked. There is no "cart is empty" confirmation screen in SFCC; the visual feedback is the most reliable signal.
+
+---
+
+#### The SFCC React re-render problem (bottleneck)
+
+This is the most technically interesting part of this feature and the reason it lives in Python rather than bash.
+
+Continente.pt's cart is a **React SPA**. When you click a remove button:
+- SFCC fires an XHR to its API
+- React receives the response and re-renders the cart item list in place
+- The old DOM nodes are **replaced entirely** — they are not just hidden
+
+This means you **cannot** collect all remove buttons upfront and iterate them:
+
+```python
+# WRONG — stale NodeList after first removal:
+buttons = await page.query_selector_all("button.remove-product")
+for btn in buttons:
+    await btn.click()   # btn 2, 3, 4... are detached after first click
+```
+
+The correct pattern is to re-query on every iteration:
+
+```python
+# CORRECT — fresh query each time:
+while True:
+    btn = await page.query_selector("button.remove-product")
+    if not btn:
+        break
+    await btn.click()
+    await btn.wait_for_element_state("detached")  # wait for DOM update
+```
+
+`wait_for_element_state("detached")` is Playwright's way of knowing the XHR completed and React re-rendered. It is much more reliable than a fixed `sleep` — on fast connections the detach happens in under 200 ms; on slow connections it might take 2+ seconds. The fixed fallback (`wait_for_timeout(1500)`) only kicks in if `wait_for_element_state` itself raises (e.g. the element was already detached before we could register the wait).
+
+A safety cap of 50 iterations prevents an infinite loop if the cart somehow keeps showing a remove button even after clicking it.
+
+---
+
+#### Selector resilience
+
+SFCC's cart page uses different CSS class names across themes and releases. Ten selectors are tried in priority order:
+
+```python
+REMOVE_SELECTORS = [
+    "button.remove-product",           # SFCC default theme
+    "button[data-action='remove']",    # data-action variant
+    ".cart-item__remove button",       # nested button
+    "button.btn-remove-item",          # alternative class
+    "button[aria-label='Remover']",    # aria-label (PT)
+    "button[aria-label='Remove']",     # aria-label (EN)
+    ".product-info__remove button",    # product-info block
+    "[data-action='remove-product'] button",
+    ".ct-cart-item__remove button",    # ct- prefix theme
+    "button.icon-close[data-pid]",     # icon + pid attribute
+]
+```
+
+If continente.pt ever changes their cart DOM, updating this list is the only thing needed.
+
+---
+
+#### Changes in this release
+
+- ✨ `feat:` `continente.py` — new `clear_cart()` async method + `--clear-cart` CLI flag
+- ✨ `feat:` `shop.sh` — new Option 2 `_clear_cart()` with confirmation prompt; all other options renumbered 3–7
+- 🏷️ `bump:` version banners → v2.1.0 in all five `.sh` files
+- 📖 `docs:` `README.md` — badge v2.1.0, menu display updated, new "Clear your cart" section
+- 📖 `docs:` `CHANGELOG.md` — this entry with SFCC React re-render bottleneck deep-dive
+
+---
+
 # 📝 Changelog
 
 *Made with ❤️ by Paul Fleury — [@paulfxyz](https://github.com/paulfxyz)*
