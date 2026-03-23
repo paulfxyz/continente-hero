@@ -9,12 +9,15 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ## 🔖 [1.2.2] — 2026-03-23
 
-### 🐛 Hotfix
+### 🐛 Hotfix — `install.sh` complete rewrite
 
-**`install.sh` — stale `.venv` auto-rebuild**
-- 🔄 `fix:` If a `.venv` already exists but was built with a different Python version (e.g. 3.14 from a previous failed attempt), the installer now automatically deletes it and rebuilds it with the correct Python — no manual cleanup needed
-- 🧠 `fix:` Version comparison reads the actual Python binary inside the existing `.venv` and compares it against the selected interpreter before deciding whether to reuse or rebuild
-- 💬 `fix:` Clear warning printed when a rebuild is triggered: `Existing .venv was built with Python X.Y — need X.Z. Rebuilding…`
+**All-in-one, self-healing installer**
+- 🔄 `fix:` Stale `.venv` auto-detected and wiped — if the existing environment was built with the wrong Python (e.g. 3.14), it is automatically deleted and rebuilt with the correct interpreter; no manual cleanup needed
+- 🍺 `fix:` If no compatible Python is found AND Homebrew is available, the installer now offers to run `brew install python@3.13` interactively — one `y` keypress and it installs Python, then continues setup automatically
+- 🚫 `fix:` Python 3.14+ hard-blocked with a clear explanation — "Playwright's greenlet dependency has no pre-built wheel for Python 3.14+"
+- 🏷️ `fix:` Banner corrected from "CONTINENTE CART BOT" to "CONTINENTE HERO"
+- 🎨 `fix:` Cyan section headers for better terminal readability
+- 📋 `fix:` Installer header documents exactly what each step does, safe-to-rerun guarantee, and that session/config files are never touched
 
 ---
 
