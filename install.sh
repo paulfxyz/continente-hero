@@ -7,6 +7,7 @@
 #    chmod +x install.sh && ./install.sh
 #
 #  What this script does — in order:
+#    0. Marks all .sh scripts executable (fixes "permission denied" after clone)
 #    1. Checks you are on macOS
 #    2. Finds Python 3.11–3.13  (3.14+ is blocked — see WHY below)
 #       └─ If missing: offers to run  brew install python@3.13  for you
@@ -41,8 +42,7 @@ RESET="\033[0m"
 info()    { echo -e "  ${GREEN}✓${RESET}  $*"; }
 warn()    { echo -e "  ${YELLOW}⚠${RESET}   $*"; }
 err()     { echo -e "  ${RED}✗${RESET}  $*" >&2; }
-section() { echo -e "
-${BOLD}${CYAN}── $* ──${RESET}"; }
+section() { echo -e "\n${BOLD}${CYAN}── $* ──${RESET}"; }
 die()     { err "$*"; echo ""; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -50,9 +50,16 @@ VENV_DIR="$SCRIPT_DIR/.venv"
 
 echo ""
 echo "══════════════════════════════════════════════════════════════"
-echo "  CONTINENTE HERO — Installer  (v1.2.2)"
+echo "  CONTINENTE HERO — Installer  (v1.2.3)"
 echo "══════════════════════════════════════════════════════════════"
 echo ""
+
+# ── 0. Permissions ────────────────────────────────────────────────────────────
+section "0 / 5  Permissions"
+# git clone does not preserve execute bits on .sh files. Fix them all up front
+# so the user never sees "permission denied" when running run.sh, edit.sh, etc.
+chmod +x "$SCRIPT_DIR"/*.sh 2>/dev/null || true
+info "All .sh scripts marked executable"
 
 # ── 1. macOS ──────────────────────────────────────────────────────────────────
 section "1 / 5  System check"
@@ -67,7 +74,7 @@ fi
 section "2 / 5  Python"
 
 # python_ver BIN
-#   Prints "major minor" (space-separated) for BIN, or returns 1 if not found.
+#   Prints the "major minor" (space-separated integers) for BIN, or returns 1.
 #   Using space-separated integers avoids the  ${ver##*.}  pitfall which strips
 #   everything up to the LAST dot — returning the patch number instead of minor
 #   (e.g. "1" from "3.13.1"). With  read major minor <<< "$ver_str"  we always
@@ -239,7 +246,10 @@ info "All packages installed"
 section "5 / 5  Playwright Chromium browser"
 
 echo "  Downloading Chromium (~170 MB) — this takes a minute on first run…"
-playwright install chromium
+# Use the full path to the venv's playwright binary. Even with the venv
+# activated, zsh does not always rehash its command cache mid-script, so
+# the bare  playwright  command may resolve to nothing or a system copy.
+"$VENV_DIR/bin/playwright" install chromium
 info "Chromium ready"
 
 # ── Scaffold .env, session/, reports/ ─────────────────────────────────────────
