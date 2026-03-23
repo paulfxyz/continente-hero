@@ -45,8 +45,29 @@ Previous versions blocked Python 3.14 explicitly. With `greenlet 3.3+` having a 
 - 🐛 `fix:` `setup.sh` — `pip install --upgrade` to bust stale cached wheels
 - 🐛 `fix:` `install.sh` — same `pip install --upgrade` fix
 - ✅ `feat:` `setup.sh` + `install.sh` — Python 3.14 unblocked, now accepted
+- 🐛 `fix:` `setup.sh` — banner version corrected to v2.0.2 (was showing v2.0.1)
+- 🐛 `fix:` `install.sh` — banner version corrected to v2.0.2 (was showing v1.2.4)
+- 💬 `ux:` `setup.sh` — final output now shows a standalone bold `source ~/.zshrc` command as the required next step, with explanation of why the subshell can’t do it automatically
 - 🏷️ `fix:` `shop.sh` + `update.sh` banners updated to v2.0.2
-- 📖 `docs:` `README.md` — version badge updated to 2.0.2, Python badge updated to 3.11–3.14, compatibility section rewritten
+- 📖 `docs:` `README.md` — version badge 2.0.2, Python badge 3.11–3.14, greenlet fix explained, new bottleneck #10 (subshell isolation)
+- 📖 `docs:` `INSTALL.md` — header updated to v2.0.2
+
+---
+
+#### Why `shop` wasn’t working after install (subshell isolation)
+
+This is worth explaining because it confused nearly every user.
+
+When the installer runs as `curl URL | bash`, bash is a **child process** of the user’s zsh session. The installer correctly writes `alias shop='...'` to `~/.zshrc`. But then it exits — and with it, its entire environment. The parent zsh never reloads `~/.zshrc` just because a child wrote to it.
+
+This is not a bug. It is a fundamental POSIX rule: **no process can modify the environment of its parent.** macOS, Linux, every Unix system works this way. Even Homebrew can’t work around it — which is why `brew install` also tells you to run `eval "$(brew shellenv)"` after first install.
+
+**The only solutions:**
+1. Source the rc file manually: `source ~/.zshrc`
+2. Open a new terminal tab (loads rc file on startup)
+3. Use the alias-free fallback: `bash ~/continente-hero/shop.sh`
+
+v2.0.2 makes option 1 unmissable — it’s now the first thing you see after a successful install, displayed as a large bold standalone command.
 
 ---
 
