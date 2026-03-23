@@ -7,36 +7,90 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ---
 
+## 🔖 [2.0.0] — 2026-03-23
+
+### 🚀 Major release — interactive menu, multi-config, shell alias
+
+This release introduces a complete workflow overhaul. The primary way to use continente-hero is now the `shop` command — a single alias that opens an interactive menu covering every operation.
+
+---
+
+#### `shop.sh` — new interactive menu launcher
+
+- 🎛️ `feat:` New `shop.sh` — interactive TUI menu with 6 options:
+  - **1) Fill my cart** — runs the bot, offers visible/headless choice
+  - **2) Save / refresh session** — guided browser login flow
+  - **3) Edit shopping list** — opens in best available editor (VS Code → Cursor → Sublime → TextEdit → nano)
+  - **4) Switch shopping list** — multi-config management (see below)
+  - **5) Update continente-hero** — pulls latest code + refreshes dependencies
+  - **6) Quit**
+- 🗂️ `feat:` **Multi-config support** — maintain multiple `.yaml` shopping lists in a `configs/` folder, switch between them from the menu. Active list is always `config.yaml`
+- 🏷️ `feat:` Active list name shown at the top of every menu screen
+- 🏗️ `feat:` Create new lists from within the menu — copies current config as a starting point
+- 🛡️ `feat:` venv guard at startup — prints the curl install command if the venv doesn't exist yet
+- 🔄 `feat:` Update option uses `git reset --hard origin/main` — never fails due to local modifications
+
+---
+
+#### `setup.sh` — curl installer now fully automatic
+
+- 🤖 `feat:` Python 3.13 is now **installed automatically via Homebrew** when missing — no prompt, no manual step, works when piped through `curl | bash`
+- 🏷️ `feat:` Shell alias `shop` registered in `~/.zshrc` (or `~/.bashrc`) automatically during install
+- 🔄 `feat:` Alias update logic — if `shop` alias already exists, it is updated in-place (handles re-installs to a different path)
+- 📌 `feat:` Version bumped to v2.0 in the banner
+
+---
+
+#### `update.sh` — rewritten
+
+- 🔄 `fix:` Replaced `git pull` with `git fetch + git reset --hard origin/main` — `git pull` aborts when local files have been modified (e.g. by `chmod +x`); `reset --hard` always succeeds
+- 📦 `fix:` Playwright updated using `$VENV_DIR/bin/playwright` full path — the bare `playwright` command is unreliable in zsh after venv activation
+- 🏷️ `fix:` Banner updated from "CONTINENTE CART BOT" to "CONTINENTE HERO"
+
+---
+
+#### `README.md` — complete v2 rewrite
+
+- 🚀 `feat:` `shop` alias documented as the primary entry point
+- 🗂️ `feat:` Multi-config usage guide — `configs/` folder, switching, creating new lists
+- 🔐 `feat:` Session connection deep-dive — cookie anatomy table, full flow diagram, security notes
+- ⚠️ `feat:` Python 3.14 incompatibility explained with the exact compiler error
+- 🛠️ `feat:` Full "how it works" section — browser engine, product resolution strategy, failover guarantee, run report format
+- 🏷️ `feat:` Version badge updated to 2.0.0, links to GitHub Releases
+
+---
+
+## 🔖 [1.4.0] — 2026-03-23
+
+### ✨ setup.sh — curl installer improvements
+
+- 🤖 `feat:` Python 3.13 installation is now attempted automatically (not just when stdin is a terminal)
+- 🏷️ `feat:` Shell alias `shop` registered during install
+- 📌 `feat:` Version bumped to v1.4.0
+
+---
+
 ## 🔖 [1.3.0] — 2026-03-23
 
 ### ✨ New — curl one-liner installer
 
 **`setup.sh` — new curl-based installer (zero prior clone required)**
-- 🚀 `feat:` Added `setup.sh` — run the entire installation from a single curl command: `curl -fsSL https://raw.githubusercontent.com/paulfxyz/continente-hero/main/setup.sh | bash`
-- 📁 `feat:` Auto-clones the repo to `~/continente-hero` on first run — no manual `git clone` needed
-- 🔄 `feat:` On re-run, uses `git fetch + git reset --hard origin/main` instead of `git pull` — bypasses the "local changes would be overwritten" error that `git pull` produces when `chmod +x` has modified `.sh` files
-- 🖥️ `feat:` Detects whether stdin is a terminal or a pipe — when piped through `curl | bash`, interactive prompts are skipped and clear instructions are printed instead (prompting from a pipe produces garbage input)
-- 🛡️ `feat:` Explicit `if ! git clone` / `if ! git fetch` guards — prints a clear message and exits if the network fails, instead of silently continuing with a missing or half-written repo
-- 🛡️ `feat:` Explicit `if ! pip install` and `if ! playwright install chromium` guards with actionable error messages
-- 🪤 `feat:` `trap EXIT` handler — if the script dies unexpectedly for any reason, prints the exit code and suggests `bash -x setup.sh` for debugging
-- 📂 `feat:` `CONTINENTE_DIR` env var override — install to a custom path: `CONTINENTE_DIR=~/projects/continente-hero bash setup.sh`
-- 📌 `feat:` Version bumped to v1.3.0 in the banner
-
-**`README.md`**
-- 🏷️ `fix:` Version badge updated to `1.3.0`
-- 🚀 `feat:` New prominent "Quick Install" section added at the top with the curl one-liner as the primary entry point
-- 📋 `feat:` `setup.sh` added to the "What's in the box" file table
+- 🚀 `feat:` Added `setup.sh` — full installation from one curl command
+- 📁 `feat:` Auto-clones the repo to `~/continente-hero` on first run
+- 🔄 `feat:` Uses `git fetch + git reset --hard origin/main` to bypass local-change conflicts
+- 🛡️ `feat:` Explicit guards on `git clone`, `pip install`, and `playwright install chromium`
+- 🪤 `feat:` `trap EXIT` handler — prints exit code and debug instructions on failure
+- 📂 `feat:` `CONTINENTE_DIR` env var override for custom install path
 
 ---
 
 ## 🔖 [1.2.4] — 2026-03-23
 
-### 🐛 Hotfix — three shell compatibility bugs
+### 🐛 Hotfix — shell compatibility bugs
 
-**`install.sh`**
-- 🐛 `fix:` `${answer,,}` lowercase expansion removed — this is a bash-only feature that crashes on any shell running as `/bin/sh` (dash). Replaced with an explicit `"$answer" == "y" || "$answer" == "Y"` check that works everywhere
-- 📂 `fix:` `SCRIPT_DIR` resolution rewritten — `${BASH_SOURCE[0]}` is undefined under `/bin/sh`, causing the script to resolve its own directory incorrectly (producing the double-nested path `/continente-hero/continente-hero/`). Now uses `${BASH_SOURCE[0]:-$0}` with a sh-compatible fallback
-- 📌 `fix:` Version bumped to v1.2.4 in the banner
+- 🐛 `fix:` `${answer,,}` bash-only lowercase expansion replaced with explicit comparison
+- 📂 `fix:` `SCRIPT_DIR` double-nesting bug — `${BASH_SOURCE[0]:-$0}` fallback added
+- 📌 `fix:` Version bumped to v1.2.4
 
 ---
 
@@ -44,37 +98,19 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ### 🐛 Hotfix
 
-**`install.sh` — two runtime bugs fixed**
-- 🛡️ `fix:` All `.sh` scripts are now `chmod +x`’d at the very start of `install.sh` — a fresh `git clone` does not preserve execute bits, causing `permission denied` errors on `run.sh`, `edit.sh`, etc.
-- 📦 `fix:` Playwright Chromium is now installed using the full venv path (`$VENV_DIR/bin/playwright`) instead of the bare `playwright` command — zsh does not always rehash its command cache mid-script after venv activation, so the bare command resolved to nothing and silently skipped the browser download
+- 🛡️ `fix:` All `.sh` scripts `chmod +x`'d at install start — fresh git clone strips execute bits
+- 📦 `fix:` Playwright installed using `$VENV_DIR/bin/playwright` full path
 
 ---
 
 ## 🔖 [1.2.2] — 2026-03-23
 
-### 🐛 `install.sh` — full rewrite (self-healing, zero-config)
+### 🐛 `install.sh` — full rewrite
 
-**Core behaviour changes**
-- 🗑️ `fix:` `.venv` is now **always wiped and rebuilt clean** on every run — no more stale-environment bugs when Python changes between runs
-- 🍺 `fix:` If no compatible Python is found and Homebrew is available, the installer now offers to run `brew install python@3.13` interactively and then **continues setup automatically** after install completes
-- 🔍 `fix:` After `brew install python@3.13`, the script explicitly checks `/opt/homebrew/bin/python3.13` and `/usr/local/bin/python3.13` — the well-known Homebrew paths on Apple Silicon and Intel Macs — because the new binary may not be in `$PATH` in the same shell session
-- 🛇 `fix:` Python version parsing rewritten to use `print(v.major, v.minor)` (space-separated integers) instead of `major.minor` string splitting — the old `${ver##*.}` approach returned the patch number (e.g. `1` from `3.13.1`) instead of the minor version
-- ℹ️ `fix:` `pip install` step now runs **without `--quiet`** so the user can see download/build progress during the ~30s Playwright wheel installation
-- 📝 `fix:` In-script comments explain *why* Python 3.14 is blocked (no `greenlet` wheel, Clang missing `<cstdlib>`) so any developer reading the script understands the constraint
+- 🗑️ `fix:` `.venv` always wiped and rebuilt clean on every run
+- 🍺 `fix:` Auto-brew python@3.13 offered interactively if no compatible Python found
+- 🛇 `fix:` Python version parsing rewritten to use `print(v.major, v.minor)` (space-separated integers)
 - 🏷️ `fix:` Banner corrected from "CONTINENTE CART BOT" to "CONTINENTE HERO"
-
-**README.md**
-- 🏷️ `fix:` Version badge updated from `1.2.0` → `1.2.2`
-- 🐍 `fix:` Python badge updated from `3.11+` → `3.11–3.13` to accurately reflect the supported range
-- ✅ `feat:` New "Python version compatibility" section added — explains the greenlet/3.14 issue in plain English with a link from the install step
-- 💬 `fix:` Run report example updated from `CONTINENTE CART BOT` / `CONTINENTE CART — RUN REPORT` → `CONTINENTE HERO` / `CONTINENTE HERO — RUN REPORT`
-- 💡 `fix:` Step 2 tip updated: removed outdated `brew install python@3.12` reference
-
-**INSTALL.md**
-- 🐍 `fix:` Requirements table note updated: Python 3.14 is blocked, with inline explanation
-- 📋 `fix:` Step 2 description updated to mention the venv is always wiped, and the `install.sh` success message corrected
-- ❗ `fix:` Python troubleshooting tip updated from `brew install python@3.12` → `brew install python@3.13`, with an additional callout box explaining *why* 3.14 is blocked
-- 🐛 `fix:` Stale `python continente.py` reference removed from session-save completion message
 
 ---
 
@@ -82,26 +118,19 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ### 🐛 Hotfix
 
-**`install.sh` — Python 3.14 compatibility block**
-- 🚫 `fix:` Hard-blocked Python 3.14+ with a clear error message and `brew install python@3.13` instructions — Playwright's `greenlet` dependency has no pre-built wheel for 3.14 and the C++ source compilation fails on current macOS toolchains
-- 🔍 `fix:` Removed `python3` bare command from the candidate search order — on many macOS setups `python3` resolves to whatever Homebrew last installed, which may be 3.14+; explicit versioned binaries (`python3.13`, `python3.12`, `python3.11`) are now tried first and the bare `python3` is only checked as a last resort (and still subject to the version cap)
-- ✅ `fix:` Version check helper now returns a `BLOCKED:<ver>` sentinel so the installer can report the exact blocked version to the user even if it keeps scanning for a valid one
-- 📋 `fix:` Updated supported range note in script header: `Python 3.11 – 3.13`
-- 🛠️ `fix:` "Next steps" section now says `./edit.sh` instead of `nano config.yaml`
+- 🚫 `fix:` Hard-blocked Python 3.14+ with a clear error message
+- 🔍 `fix:` Versioned binaries tried before bare `python3`
 
 ---
 
 ## 🔖 [1.2.0] — 2026-03-22
 
-### ✨ Improvements
+### ✨ Session tutorial
 
-**README.md + INSTALL.md — full session tutorial**
-- 📖 `feat:` Added deep-dive "How the session connection works" section to both docs — explains cookies/tokens concept in plain English
-- 🍪 `feat:` Cookie anatomy table added — describes each key cookie (`dwsid`, `dwanonymous`, `dw_*`) and its role
-- 🔑 `feat:` Step-by-step `--save-session` walkthrough with exact expected terminal output
-- 🔄 `feat:` Flow diagram (ASCII) showing the three-tier credential priority: saved cookies → env vars → config.yaml
-- 🔒 `feat:` Security notes section — explains what is and isn't stored, and why session files are gitignored
-- ❓ `feat:` FAQ entries added: session expiry, re-authentication, headless vs. visible mode
+- 📖 `feat:` Full "how the session connection works" section in README and INSTALL.md
+- 🍪 `feat:` Cookie anatomy table — `dwsid`, `dwanonymous`, `dw_*`
+- 🔄 `feat:` Three-tier credential priority diagram
+- 🔒 `feat:` Security notes — what is and isn't stored
 
 ---
 
@@ -109,21 +138,9 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ### ✨ Improvements
 
-**`edit.sh` — new shopping list editor launcher**
-- 🛠️ `feat:` Added `edit.sh` — opens `config.yaml` in the best available editor on your Mac
-- 🔍 `feat:` Editor priority: VS Code → Cursor → Sublime Text → TextEdit (GUI) → nano (terminal)
-- ⚠️ `feat:` TextEdit warning displayed when macOS GUI editor is selected — reminds user to use plain text mode (critical for YAML)
-- 📖 `feat:` nano controls cheatsheet printed when terminal fallback is used
-
-**README.md — complete rewrite for clarity**
-- 📖 `feat:` Full beginner-friendly walkthrough added (Step 1 → Step 5 with zero assumed knowledge)
-- 🧠 `feat:` New "How it works — under the hood" section covering: browser engine, login flow, product resolution strategy, add-to-cart logic, failover guarantee, session persistence, anti-detection approach
-- 🛒 `feat:` Full example terminal output added to show exactly what a run looks like
-- 📋 `feat:` Shopping list format table expanded with descriptions for each field
-- 🔗 `feat:` All GitHub URLs updated from `continente-cart` → `continente-hero`
-
-**Repository**
-- 🏷️ `feat:` Renamed from `continente-cart` to `continente-hero`
+- 🛠️ `feat:` Added `edit.sh` — opens config in best available editor
+- 📖 `feat:` README full beginner-friendly rewrite
+- 🏷️ `feat:` Renamed repo from `continente-cart` to `continente-hero`
 
 ---
 
@@ -131,34 +148,14 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ### 🎉 Initial release
 
-**Core bot (`continente.py`)**
 - 🛒 `feat:` Full Playwright (Chromium) automation for continente.pt cart building
-- 🔐 `feat:` Three-tier authentication: saved session cookies → env vars → config.yaml
-- 🔍 `feat:` Dual product resolution — direct URL (PDP) with search fallback
-- 🏷️ `feat:` Brand preference filter on search results with graceful fallback to first result
-- 🔢 `feat:` Quantity support — stepper input and + button click strategies
-- 🍪 `feat:` Automatic GDPR cookie banner dismissal on first run
-- 💾 `feat:` Session persistence — cookies saved and reloaded across runs
-- 📄 `feat:` Timestamped run reports saved to `reports/` with four status categories: `added`, `not_found`, `out_of_stock`, `error`
-- 🛡️ `feat:` Per-product try/except — no single failure can abort the full run
-- 🖥️ `feat:` `--visible` flag to run with browser window open (debug mode)
-- 🔑 `feat:` `--save-session` interactive flow — opens browser for manual login, captures and saves cookies
-- 🤖 `feat:` Anti-detection: real Chrome UA, `--disable-blink-features=AutomationControlled`, pt-PT locale, Europe/Lisbon timezone
-
-**Config (`config.yaml`)**
-- 📝 `feat:` YAML shopping list with `name`, `query`, `quantity`, `url`, `brand` fields
-- ✅ `feat:` `headless` and `slow_mo` tunable settings
-
-**Shell scripts**
-- 🛠️ `feat:` `install.sh` — one-shot macOS setup: Python version check, venv creation, pip install, Playwright Chromium download
-- ▶️ `feat:` `run.sh` — venv-aware launcher, passes all CLI flags through to `continente.py`
-- 🔄 `feat:` `update.sh` — git pull + pip upgrade + playwright browser update
-- 🗑️ `feat:` `uninstall.sh` — clean teardown of venv, session, reports, and Playwright Chromium cache
-
-**Documentation**
-- 📖 `feat:` `README.md` — full project documentation
-- 📦 `feat:` `INSTALL.md` — step-by-step installation guide, all auth options, CLI reference, troubleshooting table
-- 📝 `feat:` `CHANGELOG.md` — this file
+- 🔐 `feat:` Three-tier authentication: saved cookies → env vars → config.yaml
+- 🔍 `feat:` Dual product resolution — direct URL + search with brand filter
+- 🛡️ `feat:` Per-product try/except — no single failure aborts the full run
+- 📄 `feat:` Timestamped run reports saved to `reports/`
+- 💾 `feat:` Session persistence via `session/cookies.json`
+- 🖥️ `feat:` `--visible` and `--save-session` CLI flags
+- 🤖 `feat:` Anti-detection: real Chrome UA, `--disable-blink-features=AutomationControlled`
 
 ---
 
