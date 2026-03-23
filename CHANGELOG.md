@@ -1,3 +1,59 @@
+## 🔖 [2.1.1] — 2026-03-23
+
+### 🐛 Fix — Clear cart: session fallback + integrated login flow
+
+#### The bug
+
+`--clear-cart` called `bot.login()`, which:
+1. Tried saved session cookies → expired or missing → fell through
+2. Tried `CONTINENTE_USER` / `CONTINENTE_PASS` env vars → not set
+3. Tried `username` / `password` in `config.yaml` → not set (most users don't store credentials there)
+4. Printed `[ABORT] Cannot proceed without authentication` and exited
+
+The result: clear cart was unusable unless the user had a live session **and** it happened to still be valid. No recovery path.
+
+---
+
+#### The fix — `clear_cart_interactive()`
+
+Replaced the `ContinenteBot`-based flow with a new standalone `clear_cart_interactive()` function that handles the full lifecycle in a **single continuous Playwright session**:
+
+```
+Launch visible browser
+  ↓
+Load saved session cookies (if any)
+  ↓
+Check login state (7 s timeout)
+  ├── Logged in → go straight to cart clear
+  └── Not logged in → navigate to login page
+                       prompt: "log in and press Enter"
+                       wait for Enter
+                       verify login
+                       save fresh cookies to disk
+                           ↓
+                       proceed to cart clear (same browser context)
+```
+
+The browser **never closes and reopens** between login and clearing. This matters because SFCC session cookies are bound to the browser context that authenticated them. Saving to disk and loading into a new context can trigger a CSRF / session validation check and silently log the user out. Keeping one continuous context avoids this entirely.
+
+After clearing, the browser stays open on the empty cart page so the user can visually confirm everything is gone, then presses Enter to close and return to the `shop` menu.
+
+---
+
+#### Why a standalone function instead of extending `ContinenteBot`
+
+`ContinenteBot.__enter__` loads cookies and immediately calls `new_page()` — by the time `login()` runs, the context is already committed to the saved session (or lack of one). To do an interactive login fallback we would need to restructure the bot's startup sequence. Easier and cleaner to have a purpose-built function for this one flow that owns its entire browser lifecycle.
+
+---
+
+#### Changes in this patch
+
+- 🐛 `fix:` `continente.py` — new `clear_cart_interactive()` function replaces the inline `--clear-cart` block; handles session expiry with interactive login fallback in the same browser context
+- 🐛 `fix:` `continente.py` — `--clear-cart` path now always runs `headless=False`; browser stays open after clearing for visual confirmation; Press Enter to close
+- 🏷️ `bump:` version banners → v2.1.1 in all five `.sh` files + README badge
+
+---
+
 ## 🔖 [2.1.0] — 2026-03-23
 
 ### ✨ Feature — Option 2: Clear my cart
