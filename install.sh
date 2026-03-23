@@ -1,24 +1,36 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-#  install.sh — One-shot setup for continente-hero on macOS
+#  install.sh — continente-hero  |  macOS setup script
 # ─────────────────────────────────────────────────────────────────────────────
-#  Run once after cloning, or re-run at any time to repair/upgrade:
+#
+#  Usage (run once after cloning, or any time to repair/upgrade):
 #    chmod +x install.sh && ./install.sh
 #
-#  What this script does, in order:
-#    1. Verifies you are on macOS
-#    2. Finds Python 3.11–3.13 (offers to install 3.13 via Homebrew if missing)
-#    3. Wipes any existing .venv that was built with the wrong Python
-#    4. Creates a fresh .venv and installs all Python packages
-#    5. Downloads the Playwright Chromium browser
-#    6. Creates .env, session/, and reports/ if they don't exist yet
+#  What this script does — in order:
+#    1. Checks you are on macOS
+#    2. Finds Python 3.11–3.13  (3.14+ is blocked — see WHY below)
+#       └─ If missing: offers to run  brew install python@3.13  for you
+#    3. Wipes any existing .venv entirely and rebuilds it clean
+#       └─ This is intentional — a stale venv from the wrong Python causes
+#          silent, hard-to-debug failures. Always start fresh.
+#    4. Installs all Python packages from requirements.txt
+#    5. Downloads the Playwright Chromium browser binary
+#    6. Scaffolds .env, session/, and reports/ if not already present
+#       └─ config.yaml and session/cookies.json are NEVER touched
 #
-#  Safe to re-run: existing session cookies and config.yaml are never touched.
+#  WHY Python 3.14 is blocked:
+#    Playwright depends on  greenlet  — a C extension that needs a pre-built
+#    binary wheel to install. As of early 2026, greenlet publishes no wheel
+#    for Python 3.14, and building it from source fails on macOS because
+#    Apple's Clang ships without some C++ standard library headers that
+#    greenlet's source expects. The fix is simply to use Python 3.13.
+#
+#  Safe to re-run: session cookies and config.yaml are never modified.
 # ─────────────────────────────────────────────────────────────────────────────
 
-set -euo pipefail
+set -uo pipefail   # -e intentionally omitted: we handle errors explicitly
 
-# ── Colours ───────────────────────────────────────────────────────────────────
+# ── Colours & helpers ─────────────────────────────────────────────────────────
 BOLD="\033[1m"
 GREEN="\033[0;32m"
 YELLOW="\033[0;33m"
@@ -28,22 +40,22 @@ RESET="\033[0m"
 
 info()    { echo -e "  ${GREEN}✓${RESET}  $*"; }
 warn()    { echo -e "  ${YELLOW}⚠${RESET}   $*"; }
-error()   { echo -e "  ${RED}✗${RESET}  $*" >&2; }
+err()     { echo -e "  ${RED}✗${RESET}  $*" >&2; }
 section() { echo -e "
-${BOLD}${CYAN}$*${RESET}"; }
-die()     { error "$*"; echo ""; exit 1; }
+${BOLD}${CYAN}── $* ──${RESET}"; }
+die()     { err "$*"; echo ""; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"
 
 echo ""
 echo "══════════════════════════════════════════════════════════════"
-echo "  CONTINENTE HERO — Installer"
+echo "  CONTINENTE HERO — Installer  (v1.2.2)"
 echo "══════════════════════════════════════════════════════════════"
 echo ""
 
-# ── 1. macOS check ────────────────────────────────────────────────────────────
-section "[ 1 / 5 ]  System check"
+# ── 1. macOS ──────────────────────────────────────────────────────────────────
+section "1 / 5  System check"
 
 if [[ "$(uname)" != "Darwin" ]]; then
     warn "This script targets macOS. Continuing anyway — results may vary."
@@ -51,75 +63,130 @@ else
     info "macOS detected"
 fi
 
-# ── 2. Python 3.11–3.13 ───────────────────────────────────────────────────────
-section "[ 2 / 5 ]  Python"
+# ── 2. Python version check ───────────────────────────────────────────────────
+section "2 / 5  Python"
 
-# Returns 0 and prints "major.minor" if the binary exists and is in range.
-# Prints nothing and returns 1 otherwise.
-# Prints "BLOCKED:major.minor" (exit 0) if >= 3.14.
-python_status() {
+# python_ver BIN
+#   Prints "major minor" (space-separated) for BIN, or returns 1 if not found.
+#   Using space-separated integers avoids the  ${ver##*.}  pitfall which strips
+#   everything up to the LAST dot — returning the patch number instead of minor
+#   (e.g. "1" from "3.13.1"). With  read major minor <<< "$ver_str"  we always
+#   get the right fields regardless of the patch version.
+python_ver() {
     local bin="$1"
     command -v "$bin" &>/dev/null || return 1
-    local ver
-    ver=$("$bin" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null) || return 1
-    local major="${ver%%.*}" minor="${ver##*.}"
-    [[ "$major" -ne 3 ]] && return 1
-    if   [[ "$minor" -ge 14 ]]; then echo "BLOCKED:$ver"
-    elif [[ "$minor" -ge 11 ]]; then echo "OK:$ver"
-    fi
+    "$bin" -c "
+import sys, os
+v = sys.version_info
+print(v.major, v.minor)
+" 2>/dev/null || return 1
 }
 
 PYTHON_BIN=""
 BLOCKED_VER=""
 
-for candidate in python3.13 python3.12 python3.11; do
-    status=$(python_status "$candidate" || true)
-    case "$status" in
-        OK:*)      PYTHON_BIN="$candidate"; info "Found $candidate (${status#OK:})"; break ;;
-        BLOCKED:*) BLOCKED_VER="${status#BLOCKED:}" ;;
-    esac
+# Ordered preference: 3.13 → 3.12 → 3.11
+# We try explicit versioned binaries first.
+# The bare  python3  alias is checked last because on many Homebrew setups it
+# points to the most-recently-installed Python — which may be 3.14.
+for candidate in python3.13 python3.12 python3.11 python3; do
+    ver_str=$(python_ver "$candidate" 2>/dev/null || true)
+    [[ -z "$ver_str" ]] && continue
+
+    # Parse major and minor safely — works for "3 13", "3 14", etc.
+    read -r major minor <<< "$ver_str"
+
+    if [[ "$major" -ne 3 ]]; then
+        continue
+    fi
+
+    if [[ "$minor" -ge 14 ]]; then
+        # Record the blocked version for the error message, keep scanning.
+        BLOCKED_VER="$major.$minor"
+        continue
+    fi
+
+    if [[ "$minor" -ge 11 ]]; then
+        PYTHON_BIN="$candidate"
+        info "Found $candidate ($major.$minor)"
+        break
+    fi
+    # < 3.11: skip silently
 done
 
-# Bare python3 as last resort — same cap applies
+# Apple Silicon Homebrew puts versioned binaries here even when not in PATH
 if [[ -z "$PYTHON_BIN" ]]; then
-    status=$(python_status python3 || true)
-    case "$status" in
-        OK:*)      PYTHON_BIN="python3"; info "Found python3 (${status#OK:})" ;;
-        BLOCKED:*) BLOCKED_VER="${status#BLOCKED:}" ;;
-    esac
+    for hb_bin in \
+        /opt/homebrew/bin/python3.13 \
+        /opt/homebrew/bin/python3.12 \
+        /opt/homebrew/bin/python3.11 \
+        /usr/local/bin/python3.13 \
+        /usr/local/bin/python3.12 \
+        /usr/local/bin/python3.11; do
+        ver_str=$(python_ver "$hb_bin" 2>/dev/null || true)
+        [[ -z "$ver_str" ]] && continue
+        read -r major minor <<< "$ver_str"
+        if [[ "$major" -eq 3 && "$minor" -ge 11 && "$minor" -lt 14 ]]; then
+            PYTHON_BIN="$hb_bin"
+            info "Found $hb_bin ($major.$minor)"
+            break
+        fi
+    done
 fi
 
-# ── Nothing valid found ───────────────────────────────────────────────────────
+# ── No valid Python found ─────────────────────────────────────────────────────
 if [[ -z "$PYTHON_BIN" ]]; then
     echo ""
     if [[ -n "$BLOCKED_VER" ]]; then
-        error "Python $BLOCKED_VER is installed but is NOT supported."
+        err "Python $BLOCKED_VER is installed, but is NOT compatible."
         echo ""
-        echo "  Playwright's greenlet dependency has no pre-built wheel for"
-        echo "  Python 3.14+ and source compilation fails on current macOS."
+        echo -e "  ${BOLD}Why Python $BLOCKED_VER does not work:${RESET}"
+        echo "  Playwright depends on a C extension called  greenlet."
+        echo "  greenlet has no pre-built binary wheel for Python 3.14+,"
+        echo "  and building it from source fails on macOS because Apple's"
+        echo "  Clang does not ship the C++ headers that greenlet needs."
+        echo "  The fix: use Python 3.13."
+        echo ""
         echo "  Supported range: Python 3.11 – 3.13"
     else
-        error "No compatible Python found (need 3.11 – 3.13)."
+        err "No compatible Python found. Need Python 3.11–3.13."
     fi
     echo ""
 
-    # ── Offer to install python@3.13 via Homebrew automatically ───────────────
+    # ── Offer automatic install via Homebrew ──────────────────────────────────
     if command -v brew &>/dev/null; then
-        echo -e "  ${BOLD}Homebrew is available. Install Python 3.13 now?${RESET}"
-        echo -e "  This runs: ${CYAN}brew install python@3.13${RESET}"
+        echo -e "  ${BOLD}Homebrew is available.${RESET}"
+        echo -e "  Install Python 3.13 now? (runs: ${CYAN}brew install python@3.13${RESET})"
         echo ""
-        read -r -p "  [y/N] → " answer
+        printf "  [y/N] → "
+        read -r answer </dev/tty
         echo ""
+
         if [[ "${answer,,}" == "y" ]]; then
-            echo "  Installing python@3.13 via Homebrew…"
-            brew install python@3.13
+            echo "  Running: brew install python@3.13"
             echo ""
-            status=$(python_status python3.13 || true)
-            if [[ "$status" == OK:* ]]; then
-                PYTHON_BIN="python3.13"
-                info "python3.13 ready (${status#OK:})"
+            if brew install python@3.13; then
+                echo ""
+                # After Homebrew install, check the well-known paths explicitly
+                # because the shell PATH may not have updated yet.
+                for new_bin in \
+                    python3.13 \
+                    /opt/homebrew/bin/python3.13 \
+                    /usr/local/bin/python3.13; do
+                    ver_str=$(python_ver "$new_bin" 2>/dev/null || true)
+                    [[ -z "$ver_str" ]] && continue
+                    read -r major minor <<< "$ver_str"
+                    if [[ "$major" -eq 3 && "$minor" -eq 13 ]]; then
+                        PYTHON_BIN="$new_bin"
+                        info "python3.13 ready ($major.$minor) — continuing…"
+                        break
+                    fi
+                done
+                if [[ -z "$PYTHON_BIN" ]]; then
+                    die "Homebrew installed python@3.13 but the binary wasn't found in PATH or /opt/homebrew/bin. Try: open a new terminal tab and re-run ./install.sh"
+                fi
             else
-                die "python3.13 install succeeded but binary not found. Try opening a new terminal and re-running install.sh."
+                die "brew install python@3.13 failed. Check the output above, then re-run ./install.sh."
             fi
         else
             echo "  Run this manually, then re-run install.sh:"
@@ -129,75 +196,71 @@ if [[ -z "$PYTHON_BIN" ]]; then
             exit 1
         fi
     else
-        echo "  Install Homebrew first (https://brew.sh), then run:"
+        echo "  Install Homebrew first:"
+        echo "    /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
         echo ""
-        echo "    brew install python@3.13"
-        echo ""
-        echo "  Then re-run: ./install.sh"
+        echo "  Then: brew install python@3.13"
+        echo "  Then: ./install.sh"
         echo ""
         exit 1
     fi
 fi
 
 # ── 3. Virtual environment ─────────────────────────────────────────────────────
-section "[ 3 / 5 ]  Virtual environment"
+section "3 / 5  Virtual environment"
 
-WANT_VER=$("$PYTHON_BIN" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-
+# Always wipe and rebuild. A venv created with the wrong Python (e.g. 3.14)
+# will fail silently or with cryptic errors when pip tries to install compiled
+# extensions. The only safe approach is a clean rebuild every time.
 if [[ -d "$VENV_DIR" ]]; then
-    VENV_VER=""
-    if [[ -x "$VENV_DIR/bin/python" ]]; then
-        VENV_VER=$("$VENV_DIR/bin/python" -c \
-            "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null || true)
-    fi
-
-    if [[ "$VENV_VER" == "$WANT_VER" ]]; then
-        info "Existing .venv (Python $VENV_VER) matches — reusing"
-    else
-        warn "Existing .venv was built with Python ${VENV_VER:-unknown} — need $WANT_VER. Wiping and rebuilding…"
-        rm -rf "$VENV_DIR"
-        "$PYTHON_BIN" -m venv "$VENV_DIR"
-        info "Rebuilt .venv with Python $WANT_VER"
-    fi
-else
-    "$PYTHON_BIN" -m venv "$VENV_DIR"
-    info "Created .venv with Python $WANT_VER"
+    warn "Removing existing .venv and rebuilding clean…"
+    rm -rf "$VENV_DIR"
 fi
 
-# Activate and upgrade pip silently
+WANT_VER=$("$PYTHON_BIN" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+"$PYTHON_BIN" -m venv "$VENV_DIR"
+info "Created .venv with Python $WANT_VER"
+
+# Activate
 # shellcheck source=/dev/null
 source "$VENV_DIR/bin/activate"
 pip install --quiet --upgrade pip
+info "pip upgraded"
 
 # ── 4. Python packages ────────────────────────────────────────────────────────
-section "[ 4 / 5 ]  Python packages"
+section "4 / 5  Python packages"
 
-pip install --quiet -r "$SCRIPT_DIR/requirements.txt"
-info "playwright, pyyaml, python-dotenv installed"
+# Show package install progress (not --quiet) so the user sees something
+# happening during the ~30-second Playwright wheel download.
+pip install -r "$SCRIPT_DIR/requirements.txt"
+info "All packages installed"
 
 # ── 5. Playwright Chromium ────────────────────────────────────────────────────
-section "[ 5 / 5 ]  Playwright Chromium browser"
+section "5 / 5  Playwright Chromium browser"
 
+echo "  Downloading Chromium (~170 MB) — this takes a minute on first run…"
 playwright install chromium
-info "Chromium downloaded"
+info "Chromium ready"
 
-# ── Scaffolding ───────────────────────────────────────────────────────────────
+# ── Scaffold .env, session/, reports/ ─────────────────────────────────────────
+echo ""
 if [[ ! -f "$SCRIPT_DIR/.env" && -f "$SCRIPT_DIR/.env.example" ]]; then
     cp "$SCRIPT_DIR/.env.example" "$SCRIPT_DIR/.env"
-    warn ".env created from .env.example — fill in your credentials if needed."
+    warn ".env created from .env.example — open it to add credentials (optional)."
 fi
 
 mkdir -p "$SCRIPT_DIR/session" "$SCRIPT_DIR/reports"
+info "session/ and reports/ directories ready"
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════════════════════════"
-echo "  ✅  All done!  continente-hero is ready."
+echo "  ✅  continente-hero is ready!"
 echo "══════════════════════════════════════════════════════════════"
 echo ""
 echo "  Next steps:"
 echo ""
-echo "  1) Save your login session (one-time, opens a browser window):"
+echo "  1) Save your login session (one-time — opens a browser window):"
 echo "       ./run.sh --save-session"
 echo ""
 echo "  2) Edit your shopping list:"
@@ -206,5 +269,5 @@ echo ""
 echo "  3) Run the bot:"
 echo "       ./run.sh"
 echo ""
-echo "  See INSTALL.md for all options."
+echo "  Full guide: INSTALL.md"
 echo ""
