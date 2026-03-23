@@ -1,6 +1,6 @@
 # 🦸 continente-hero
 
-[![Version](https://img.shields.io/badge/Version-2.1.0-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
+[![Version](https://img.shields.io/badge/Version-2.1.2-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.11--3.14-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-45ba4b?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/)
 [![macOS](https://img.shields.io/badge/macOS-native-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos/)
