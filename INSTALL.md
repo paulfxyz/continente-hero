@@ -1,4 +1,4 @@
-# 📦 Installation Guide — continente-hero v2.0.1
+# 📦 Installation Guide — continente-hero v2.0.2
 
 This guide covers every installation path, explains the technical choices behind each step, and gives you the tools to debug anything that goes wrong.
 
