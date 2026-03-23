@@ -1,10 +1,10 @@
 # 🦸 Continente Hero
 
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.11--3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-45ba4b?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/)
 [![macOS](https://img.shields.io/badge/macOS-native-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.2.0-brightgreen?style=for-the-badge)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-1.2.2-brightgreen?style=for-the-badge)](CHANGELOG.md)
 
 **Automated cart builder for [continente.pt](https://www.continente.pt)**. Define your shopping list once in a YAML file. Run one command. Come back to a full cart.
 
@@ -78,7 +78,7 @@ chmod +x install.sh && ./install.sh
 
 This downloads ~170 MB of browser files the first time. You'll see progress on screen. It ends with `✅ Installation complete!`.
 
-> 💡 It says Python not found? Run `brew install python@3.12` and try again.
+> 💡 **Python not found or wrong version?** The installer supports Python **3.11–3.13 only**. Python 3.14 is currently blocked (see [why](#%EF%B8%8F-python-version-compatibility)). If prompted, just press `y` and the installer will run `brew install python@3.13` for you automatically.
 
 ---
 
@@ -145,6 +145,20 @@ Go to [continente.pt/checkout/carrinho/](https://www.continente.pt/checkout/carr
 ./update.sh                # pull latest code + refresh all packages
 ./uninstall.sh             # remove everything cleanly from your machine
 ```
+
+---
+
+## ⚠️ Python version compatibility
+
+This project requires **Python 3.11, 3.12, or 3.13**. Python 3.14 is not supported.
+
+**Why?** Playwright depends on a C extension called [greenlet](https://github.com/python-greenlet/greenlet). As of early 2026, `greenlet` does not publish a pre-built binary wheel for Python 3.14, and building it from source fails on macOS because Apple's Clang toolchain does not ship the C++ standard library headers (`<cstdlib>`) that `greenlet`'s source code expects. This is an upstream limitation — not something this project can fix.
+
+The installer (`install.sh`) automatically detects this and either:
+- **Finds a compatible Python already installed** (looks for `python3.13`, `python3.12`, `python3.11` — in that order)
+- **Offers to install Python 3.13 via Homebrew** interactively, then continues setup
+
+You never need to resolve this manually.
 
 ---
 
@@ -396,7 +410,7 @@ After every run, a report is printed to your terminal and saved to `reports/`:
 
 ```
 ════════════════════════════════════════════════════════════════
-  CONTINENTE CART BOT
+  CONTINENTE HERO
 ════════════════════════════════════════════════════════════════
 
   [1/8] 'Leite Meio Gordo Mimosa'  (qty: 2)
@@ -409,7 +423,7 @@ After every run, a report is printed to your terminal and saved to `reports/`:
     → Not found.
 
   ══════════════════════════════════════════════════════════════
-  CONTINENTE CART — RUN REPORT
+  CONTINENTE HERO — RUN REPORT
   2026-03-22 18:45:01
   ══════════════════════════════════════════════════════════════
 
