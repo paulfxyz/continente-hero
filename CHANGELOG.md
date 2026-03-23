@@ -7,6 +7,16 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ---
 
+## 🔖 [1.2.3] — 2026-03-23
+
+### 🐛 Hotfix
+
+**`install.sh` — two runtime bugs fixed**
+- 🛡️ `fix:` All `.sh` scripts are now `chmod +x`'d at the very start of `install.sh` — a fresh `git clone` does not preserve execute bits, causing `permission denied` errors on `run.sh`, `edit.sh`, etc.
+- 📦 `fix:` Playwright Chromium is now installed using the full venv path (`$VENV_DIR/bin/playwright`) instead of the bare `playwright` command — zsh does not always rehash its command cache mid-script after venv activation, so the bare command resolved to nothing and silently skipped the browser download
+
+---
+
 ## 🔖 [1.2.2] — 2026-03-23
 
 ### 🐛 `install.sh` — full rewrite (self-healing, zero-config)
