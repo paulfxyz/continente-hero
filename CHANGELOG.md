@@ -7,6 +7,91 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ---
 
+## 🔖 [2.0.3] — 2026-03-23
+
+### ✨ Feature — Option 4 is now a full list management sub-menu
+
+The old Option 4 ("Switch shopping list") was a single flat numbered picker. Useful, but limited: to get to a list you had to already know it existed. There was no way to inspect, add, or organise lists without dropping to the Finder or using a text editor outside the app.
+
+v2.0.3 replaces that single screen with a three-option sub-menu:
+
+```
+📂  Manage Shopping Lists
+
+  1)  ✅  Select active list   (choose which list the bot runs)
+  2)  📂  Open lists folder    (browse, edit, add or delete lists in Finder)
+  3)  ✨  Create new list      (copies current config as a starting point)
+
+  4)  ↩  Back to main menu
+```
+
+---
+
+#### Sub-option breakdown
+
+**✅ Select active list** — the picker now shows a `● active` marker next to whichever list is currently selected. If only the default `config.yaml` exists, the picker tells you so and directs you to the other two options instead of presenting a useless one-item list.
+
+**📂 Open lists folder** — runs `open "$CONFIGS_DIR"` (macOS Finder). This is the most requested UX pattern: letting people manage files with the tools they already know. Rename, duplicate, drag in a list from another machine, delete — all without learning any shell commands. If `configs/` is empty, it auto-creates `weekly.yaml` as a sample so Finder doesn't open to a blank folder.
+
+**✨ Create new list** — prompts for a name, sanitises it (strips anything that isn’t alphanumeric, dash, or underscore), copies the current active config as the starting template, and asks whether to activate the new list immediately. This means you can go from zero to a second named list in about 10 seconds without leaving the terminal.
+
+---
+
+#### The symlink design (why config.yaml is always the active file)
+
+This is worth explaining once because it shapes the entire multi-config system.
+
+`continente.py` always reads `config.yaml`. It has no knowledge of `configs/`, list names, or any switching logic. This is intentional: keeping the Python bot simple means the shell layer can evolve independently.
+
+When you switch lists, `shop.sh` does one of two things:
+- **Activating a `configs/*.yaml`**: `ln -sf configs/weekly.yaml config.yaml` — config.yaml becomes a symlink pointing into `configs/`.
+- **Reverting to the default**: if config.yaml is currently a symlink, it is removed and replaced with a real file (copied from the symlink target), so the default standalone config is restored.
+
+This means:
+1. Backups are automatic — all lists live in `configs/`, never overwritten by switching
+2. `continente.py` never needs a flag like `--config=weekly.yaml`
+3. Finder and any editor work correctly — they follow the symlink transparently
+
+---
+
+#### Bottleneck: symlink vs real-file duality
+
+The tricky edge case was the transition between a symlink `config.yaml` and a real-file `config.yaml`. The first time you ever use multi-config, `config.yaml` is a real file (no symlink). You create `configs/weekly.yaml` as a copy of it, activate `weekly.yaml` — now `config.yaml` is a symlink. If you later revert to "default", we can’t just `rm config.yaml` (that would leave nothing). We also can’t just create a new symlink back to itself. The fix:
+
+```bash
+# Before creating the first symlink, always save the real file into configs/
+if [[ ! -L "$ACTIVE_CONFIG" ]]; then
+    cp "$ACTIVE_CONFIG" "$CONFIGS_DIR/_config_backup.yaml"
+fi
+ln -sf "$selected_path" "$ACTIVE_CONFIG"
+```
+
+And when reverting to the default:
+```bash
+if [[ -L "$ACTIVE_CONFIG" ]]; then
+    backup_src=$(readlink "$ACTIVE_CONFIG")
+    rm "$ACTIVE_CONFIG"
+    cp "$backup_src" "$ACTIVE_CONFIG"   # materialise back to a real file
+fi
+```
+
+This ensures config.yaml always exists as a readable file regardless of what state the multi-config system is in.
+
+---
+
+#### Changes in this release
+
+- ✨ `feat:` `shop.sh` — `_switch_list()` replaced by `_manage_lists()` sub-menu with three sub-functions:
+  - `_select_list()` — numbered picker with `● active` marker, graceful empty-state message
+  - `_open_lists_folder()` — `open "$CONFIGS_DIR"` (Finder), auto-creates `weekly.yaml` sample if empty
+  - `_create_list()` — name prompt, sanitisation, copy-from-active, optional immediate activation
+- 🏷️ `fix:` main menu label updated: `Switch shopping list` → `Manage shopping lists`
+- 🏷️ `bump:` version banners → v2.0.3 in `shop.sh`, `setup.sh`, `update.sh`
+- 📖 `docs:` `README.md` — badge v2.0.3, menu block updated, Option 4 section rewritten with sub-menu breakdown and symlink design explanation
+- 📖 `docs:` `CHANGELOG.md` — this entry
+
+---
+
 ## 🔖 [2.0.2] — 2026-03-23
 
 ### 🐛 Critical fix — `greenlet` wheel missing on macOS 26 + Python 3.14 now supported
