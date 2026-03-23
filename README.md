@@ -1,33 +1,35 @@
 # 🦸 continente-hero
 
+[![Version](https://img.shields.io/badge/Version-2.0.0-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.11--3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-45ba4b?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/)
 [![macOS](https://img.shields.io/badge/macOS-native-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.3.0-brightgreen?style=for-the-badge)](CHANGELOG.md)
 
-**Automated cart builder for [continente.pt](https://www.continente.pt)**. Define your shopping list once in a YAML file. Run one command. Come back to a full cart.
+**Automated cart builder for [continente.pt](https://www.continente.pt).**  
+Define your weekly shopping list once in a YAML file. Type `shop`. Come back to a full cart.
 
 ---
 
-## ⚡️ Quick Install
+## ⚡️ Install in one command
 
-No git clone needed. Paste this into your Terminal and hit Enter:
+Open **Terminal** and paste this. No git clone, no setup steps — it handles everything:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/paulfxyz/continente-hero/main/setup.sh | bash
 ```
 
-That one command:
-- Downloads the repo to `~/continente-hero`
-- Finds (or installs) the right Python
-- Builds the virtual environment
-- Installs all packages
-- Downloads the Chromium browser
+That single command:
+- Installs Python 3.13 via Homebrew if needed (fully automatic)
+- Clones the repo to `~/continente-hero`
+- Creates a Python virtual environment
+- Installs all packages (Playwright, PyYAML, python-dotenv)
+- Downloads the Chromium browser (~170 MB)
+- Registers a `shop` alias in your shell
 
-When it finishes, you’re one `./run.sh --save-session` away from a full cart.
+When it finishes, type `shop` to open the menu.
 
-> **Prefer to inspect the script before running it?** That’s a healthy instinct:
+> **Want to read the script before running it?** That's a healthy habit:
 > ```bash
 > curl -fsSL https://raw.githubusercontent.com/paulfxyz/continente-hero/main/setup.sh -o setup.sh
 > cat setup.sh   # read it
@@ -36,24 +38,62 @@ When it finishes, you’re one `./run.sh --save-session` away from a full cart.
 
 ---
 
-## 👨‍💻 The Story Behind This
+## 🛒 Using continente-hero
 
-I shop at Continente regularly — same products, week after week. Opening the site, searching each item, clicking _Adicionar ao carrinho_ eight times in a row, every single week. That's the kind of repetitive clicking that should never be done by a human.
+After installation, every interaction goes through one command:
 
-So I built this. One config file with my list, one command to run it, and I open my browser to a pre-filled cart ready to check out.
+```bash
+shop
+```
+
+That opens an interactive menu:
+
+```
+  ╔══════════════════════════════════════════════════╗
+  ║   🦸  continente-hero  ·  v2.0                  ║
+  ╚══════════════════════════════════════════════════╝
+
+  Active list: config.yaml
+
+  ──────────────────────────────────────────────────────
+
+  1)  🛒  Fill my cart              (run the bot)
+  2)  🔐  Save / refresh session    (log in once)
+  3)  ✏️   Edit shopping list        (opens editor)
+  4)  📂  Switch shopping list      (multi-config)
+  5)  🔄  Update continente-hero    (pull latest)
+  6)  👋  Quit
+
+  ──────────────────────────────────────────────────────
+
+  Choose [1–6] →
+```
+
+### First time? Do this in order:
+
+1. **Option 2** — Save your session. A browser window opens on the Continente login page. Log in normally. Press Enter in the Terminal when done. You'll never need to do this again unless your session expires.
+2. **Option 3** — Edit your shopping list. Add your products.
+3. **Option 1** — Fill your cart. The bot runs silently, adds everything, and prints a report.
+4. Open [continente.pt/checkout/carrinho/](https://www.continente.pt/checkout/carrinho/) and check out.
 
 ---
 
-## 🌟 What does it do?
+## 👨‍💻 The story behind this
 
-A Python + Playwright bot that:
+I shop at Continente regularly — same products, week after week. Opening the site, searching each item, clicking _Adicionar ao carrinho_ eight times in a row. Every. Single. Week. That's the kind of repetitive clicking that should never be done by a human.
 
-- 🔐 **Logs in to your Continente account** — via saved session (recommended), `.env` credentials, or one-time manual login capture
-- 🔍 **Searches for each product** — or navigates directly to a product URL if you provide one
+So I built this. One config file, one command, full cart.
+
+---
+
+## 🌟 What it does
+
+- 🔐 **Logs in to your Continente account** — via saved session cookies (recommended), `.env` credentials, or `config.yaml`
+- 🔍 **Finds each product** — direct URL navigation or keyword search, with optional brand preference
 - 🛒 **Adds everything to your cart** — with full quantity support
-- 🧠 **Never crashes on missing products** — out-of-stock, not found, errors: all caught and reported gracefully
-- 📄 **Prints a clear run report** — exactly what was added and what was skipped, saved to `reports/`
-- 💾 **Persists your session** — logs in once, reuses cookies on every future run
+- 🧠 **Never crashes on missing products** — out-of-stock, not found, any error: caught gracefully and reported
+- 📄 **Saves a timestamped run report** — in `reports/`, showing exactly what was added and what was skipped
+- 💾 **Persists your session** — log in once, reuse cookies on every future run
 
 ---
 
@@ -61,155 +101,30 @@ A Python + Playwright bot that:
 
 | File | Purpose |
 |---|---|
-| `continente.py` | Main Playwright automation script |
-| `config.yaml` | Your shopping list (product names, quantities, URLs) |
-| `setup.sh` | **curl one-liner installer** — clones repo + full setup, no prior git clone needed |
-| `install.sh` | Local setup script (run inside an already-cloned repo) |
-| `run.sh` | Single command to activate venv and run the bot |
-| `edit.sh` | Opens `config.yaml` in the best editor available on your Mac |
-| `update.sh` | Pull latest changes and refresh all dependencies |
+| `continente.py` | Main bot — Playwright automation, login, cart logic, report |
+| `config.yaml` | Your active shopping list |
+| `configs/` | Extra shopping lists (weekly, party, etc.) — switch via `shop` menu |
+| `shop.sh` | **Interactive menu launcher** — the main entry point |
+| `setup.sh` | **curl one-liner installer** — clones + full setup, no prior steps needed |
+| `install.sh` | Local installer (use if you already have the repo cloned) |
+| `update.sh` | Pull latest code + refresh all dependencies |
+| `edit.sh` | Opens `config.yaml` in the best available editor |
 | `uninstall.sh` | Clean teardown — removes venv, session, reports, Chromium cache |
-| `requirements.txt` | Python dependencies (managed automatically) |
+| `requirements.txt` | Python dependencies (auto-managed) |
 | `.env.example` | Credentials template |
 | `session/` | Auto-created — stores your login cookies locally |
-| `reports/` | Auto-created — timestamped run reports after each run |
+| `reports/` | Auto-created — timestamped run reports |
 
 ---
 
-## 🚀 Complete beginner? Start here.
+## 📝 Your shopping list
 
-This is the full workflow, from zero to a filled cart. Takes about 5 minutes the first time.
-
----
-
-### Step 1 — Get the code + install everything
-
-Open **Terminal** (press `⌘ Space`, type `Terminal`, press Enter).
-
-**Option A — curl one-liner (recommended, no prior setup needed):**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/paulfxyz/continente-hero/main/setup.sh | bash
-```
-
-This does everything — clones the repo, sets up Python, installs packages, downloads Chromium. Skip to Step 3 when done.
-
----
-
-**Option B — manual clone + install:**
-
-```bash
-git clone https://github.com/paulfxyz/continente-hero.git
-cd continente-hero
-chmod +x install.sh && ./install.sh
-```
-
-> 💡 Don't have `git`? Run `xcode-select --install` first, or install [Homebrew](https://brew.sh) and then `brew install git`.
-
-This downloads ~170 MB of browser files the first time. You’ll see progress on screen.
-
-> 💡 **Python not found or wrong version?** The installer supports Python **3.11–3.13 only**. Python 3.14 is currently blocked (see [why](#-python-version-compatibility)). If prompted, just press `y` and the installer will run `brew install python@3.13` for you automatically.
-
----
-
-### Step 2 — Log in once (saves your session forever)
-
-```bash
-./run.sh --save-session
-```
-
-A browser window opens on the continente.pt login page. Log in with your account normally — the bot does nothing here, it just watches. Once you see your homepage, switch back to the Terminal window and press **Enter**.
-
-Your session is now saved. You will **never need to log in again** unless your session expires (usually weeks or months later).
-
-> 🔁 Session expired? Just run `./run.sh --save-session` again — takes 30 seconds.
-
----
-
-### Step 3 — Edit your shopping list
-
-```bash
-./edit.sh
-```
-
-This opens `config.yaml` in the best editor available on your Mac (VS Code, Sublime, or TextEdit). Your shopping list looks like this:
+Your list lives in `config.yaml`. Open it via **Option 3** in the `shop` menu, or directly:
 
 ```yaml
 products:
 
-  - name: "Leite Meio Gordo Mimosa"
-    url: "https://www.continente.pt/produto/leite-uht-meio-gordo-mimosa-6879912.html"
-    quantity: 2
-
-  - name: "Azeite Extra Virgem Gallo"
-    query: "azeite extra virgem"
-    brand: "Gallo"
-    quantity: 1
-```
-
-Replace the example products with your own. Save the file and close the editor.
-
-> 💡 **How to get a product URL:** Open continente.pt in your browser, navigate to the product, and copy the URL from the address bar. Paste it as the `url:` field. This is the most reliable method — the bot goes straight to the page without searching.
-
----
-
-### Step 4 — Run it
-
-```bash
-./run.sh
-```
-
-The bot runs silently (no window). You'll see each product being processed in the terminal. When it's done, it opens your cart automatically and prints a report.
-
-Go to [continente.pt/checkout/carrinho/](https://www.continente.pt/checkout/carrinho/) and check out.
-
----
-
-## ⚠️ Python version compatibility
-
-This project requires **Python 3.11, 3.12, or 3.13**. Python 3.14 is not supported.
-
-**Why?** Playwright depends on a C extension called [greenlet](https://github.com/python-greenlet/greenlet). As of early 2026, `greenlet` does not publish a pre-built binary wheel for Python 3.14, and building it from source fails on macOS because Apple's Clang toolchain does not ship the C++ standard library headers (`<cstdlib>`) that `greenlet`'s source code expects. This is an upstream limitation — not something this project can fix.
-
-The installer (`install.sh`) automatically detects this and either:
-- **Finds a compatible Python already installed** (looks for `python3.13`, `python3.12`, `python3.11` — in that order)
-- **Offers to install Python 3.13 via Homebrew** interactively, then continues setup
-
-You never need to resolve this manually.
-
----
-
-## 🛠️ CLI flags
-
-```bash
-./run.sh                   # normal headless run (no browser window)
-./run.sh --visible         # shows the browser so you can watch it work
-./run.sh --save-session    # re-opens browser to log in and refresh session
-./edit.sh                  # open shopping list in your editor
-./update.sh                # pull latest code + refresh all packages
-./uninstall.sh             # remove everything cleanly from your machine
-```
-
----
-
-## 📋 Shopping list format
-
-Every field except `name` is optional:
-
-| Field | Required | What it does |
-|---|---|---|
-| `name` | ✅ | Label shown in the terminal and in the report |
-| `query` | optional | Search term sent to continente.pt. Defaults to `name` if not set |
-| `quantity` | optional | How many to add. Defaults to `1` |
-| `url` | optional | Direct product page URL — skip search entirely. **Most reliable.** |
-| `brand` | optional | Prefer results from this brand. Falls back to the first result if no match |
-
-### Examples
-
-```yaml
-products:
-
-  # Go straight to the product page (most reliable)
+  # Most reliable: direct product URL
   - name: "Leite Meio Gordo Mimosa"
     url: "https://www.continente.pt/produto/leite-uht-meio-gordo-mimosa-6879912.html"
     quantity: 2
@@ -219,387 +134,226 @@ products:
     query: "pão de forma integral"
     quantity: 1
 
-  # Search + prefer a specific brand
+  # Search with brand preference (picks the first result that matches the brand)
   - name: "Azeite Extra Virgem Gallo"
     query: "azeite extra virgem"
     brand: "Gallo"
     quantity: 1
-
-  # If out of stock, the report says so — no crash
-  - name: "Bacalhau Salgado Seco"
-    query: "bacalhau salgado seco"
-    quantity: 1
 ```
+
+**Fields at a glance:**
+
+| Field | Required | Description |
+|---|---|---|
+| `name` | ✅ | Human label — shown in logs and the run report |
+| `url` | optional | Direct product page URL — most reliable, skips search entirely |
+| `query` | optional | Search keyword — defaults to `name` if omitted |
+| `brand` | optional | Preferred brand — scans results for this text, falls back to first result |
+| `quantity` | optional | Units to add — defaults to `1` |
+
+> 💡 **How to get a product URL:** Go to continente.pt in your browser, find the product, and copy the URL from the address bar. Products with a `url:` field are added instantly — no searching, no guessing.
 
 ---
 
-## 🔐 Authentication — full guide
+## 🗂️ Multiple shopping lists
 
-The bot needs to be logged in to your Continente account to add things to your cart. There are three ways to handle this. **Option A is what everyone should use.**
+You can maintain multiple lists (weekly groceries, party supplies, etc.) and switch between them from the `shop` menu (**Option 4**).
+
+Lists are stored in the `configs/` folder:
+
+```
+~/continente-hero/
+├── config.yaml          ← active list (what the bot reads)
+└── configs/
+    ├── weekly.yaml      ← your regular weekly shop
+    ├── party.yaml       ← drinks, snacks, etc.
+    └── pantry.yaml      ← dry goods top-up
+```
+
+**How it works:**
+
+1. Open `shop`, choose **Option 4 — Switch shopping list**
+2. Select a list, or create a new one (it copies your current config as a starting point)
+3. The menu shows which list is active at the top of every screen
+4. Switching sets `config.yaml` to point to the chosen list
 
 ---
 
-### Option A — Save session (recommended)
+## 🔐 How the session connection works
 
-**What is a "session" and why does saving it matter?**
+This is the recommended authentication method — and it's important to understand why it's safe.
 
-When you log in to a website in your browser, the site issues a set of small tokens called **cookies**. These cookies are stored in your browser and sent automatically with every request, so the site knows you're authenticated. That's why you don't have to type your password every time you open a new tab.
+### The flow
 
-`--save-session` captures those exact cookies after you log in manually, and saves them to a file: `session/cookies.json`. On every future run, the bot loads that file into its own private Chromium browser before visiting the site — so continente.pt sees an already-authenticated session. No password is ever stored. No automated login happens. The site just thinks it's you.
-
-**Step-by-step walkthrough:**
-
-Run this in your terminal:
-
-```bash
-./run.sh --save-session
+```
+You run:  ./run.sh --save-session  (or Option 2 in the shop menu)
+            ↓
+  Playwright opens a real Chromium browser window
+  on the continente.pt login page.
+            ↓
+  You type your email and password yourself.
+  The bot is not involved — it just holds the window open.
+            ↓
+  You press Enter in the Terminal.
+            ↓
+  Playwright reads the browser's cookie jar and saves it
+  to:  session/cookies.json
+            ↓
+  On every future run, the bot loads these cookies
+  and is immediately logged in — no password ever used.
 ```
 
-**1.** The terminal prompts you:
-```
-════════════════════════════════════════════════════════════════
-  SAVE SESSION
-════════════════════════════════════════════════════════════════
+### What gets stored
 
-  A browser window will open at the continente.pt login page.
-  Log in with your account, then come back here and press Enter.
-
-  Press Enter to open the browser…
-```
-Press **Enter**.
-
-**2.** A real Chromium browser window opens on the continente.pt login page. This is not a screenshot or a simulation — it's a full browser. You can see the page, click things, use 2-factor authentication, solve captchas, everything you'd do in Chrome or Safari.
-
-**3.** Log in to your Continente account the way you normally do:
-- Type your email and password
-- Complete SMS verification or 2FA if your account uses it
-- Wait until you land on the homepage and see your account name or icon in the header — that confirms you're fully logged in
-
-**4.** Switch back to the Terminal window (the browser can stay open). Press **Enter** when you see:
-```
-  → Browser is open. Log in to continente.pt.
-  → Once you see your account / homepage, come back here.
-
-  Press Enter once you are logged in…
-```
-
-**5.** The bot reads all the cookies from the browser, writes them to `session/cookies.json`, and prints:
-```
-  ✓ Session saved (47 cookies).
-  You can now run the bot normally:
-
-      ./run.sh
-```
-The browser closes. You're done.
-
----
-
-**What does `session/cookies.json` actually contain?**
-
-It's a plain JSON file — you can open it in any text editor to see what's inside. It looks roughly like this:
+`session/cookies.json` contains only HTTP session cookies — the same tokens your browser stores when you log in to any website. No password is ever written to disk. The file looks like:
 
 ```json
 [
-  {
-    "name": "dwsid",
-    "value": "Xk92nPqR7mT...",
-    "domain": ".continente.pt",
-    "path": "/",
-    "expires": 1742000000.0,
-    "httpOnly": true,
-    "secure": true,
-    "sameSite": "None"
-  },
-  {
-    "name": "dwanonymous_4f8a",
-    "value": "abcXYZ...",
-    "domain": ".continente.pt",
-    ...
-  }
+  { "name": "dwsid",      "value": "abc123...", "domain": ".continente.pt", ... },
+  { "name": "dwanonymous", "value": "...",      "domain": ".continente.pt", ... }
 ]
 ```
 
-There are typically 40–60 cookies. The critical one is `dwsid` — this is the **Salesforce Commerce Cloud session token** that proves authentication. As long as it's valid, the bot is in.
-
----
-
-**How the bot uses this file on every run:**
-
-```
-./run.sh
-  │
-  ├─ Chromium starts (headless — invisible)
-  ├─ Loads all cookies from session/cookies.json into the browser
-  ├─ Navigates to continente.pt
-  ├─ Checks for account menu element (logged-in indicator)
-  │     ✓ Found → authenticated, proceed with cart run
-  │     ✗ Not found → session expired → see below
-  │
-  └─ After run: saves refreshed cookies back to session/cookies.json
-```
-
-The session check takes about 3 seconds. If the session is valid, the bot never visits the login page.
-
----
-
-**How long does the session last?**
-
-Continente sessions typically stay valid for **2 to 4 weeks** without any activity. If you run the bot regularly, the session refreshes automatically every time — the bot saves updated cookies at the end of each run. In practice, as long as you use the bot once a week, you'll never see a session expiry.
-
-If you haven't used it in a while and the session is gone, the bot will print:
-```
-  [LOGIN] ✗ Saved session has expired or is no longer valid.
-```
-Run `./run.sh --save-session` again. The whole process takes 30 seconds.
-
----
-
-**Is this safe?**
-
-Yes — and here's exactly why:
-
-- `session/cookies.json` is in `.gitignore`. It will **never** be committed to git or uploaded anywhere, even if you push the rest of the project to GitHub.
-- The file lives only at `continente-hero/session/cookies.json` on your local machine.
-- The cookies are sent only to `continente.pt`. You can verify this by running `./run.sh --visible` and watching the browser — it only ever visits continente.pt pages.
-- Treat this file the way you'd treat a saved password: don't share it, don't email it, don't sync it to iCloud Drive.
-
-> 🔁 **Session expired or the bot can't log in?**
-> ```bash
-> ./run.sh --save-session
-> ```
-> Redo the steps above. 30 seconds, done.
-
----
-
-### Option B — `.env` credentials file
-
-This stores your email and password in a local file that the bot reads at startup. Useful if you prefer fully automated logins without ever opening a browser window.
-
-```bash
-cp .env.example .env
-./edit.sh    # or: nano .env
-```
-
-Fill in your credentials:
-
-```env
-CONTINENTE_USER=your@email.com
-CONTINENTE_PASS=yourpassword
-```
-
-Save and close. On every run, if there are no valid saved cookies, the bot will:
-
-1. Navigate to the continente.pt login page
-2. Fill in your email and password automatically
-3. Submit the form
-4. Wait for the redirect back to the homepage
-5. Confirm authentication
-6. Save the resulting cookies to `session/cookies.json`
-
-After that first automated login, the behaviour is identical to Option A — future runs reuse the saved cookies and never touch the password.
-
-> ⚠️ `.env` is in `.gitignore` — it will never be committed to git. But it does contain your plaintext password. Don't put the project folder in a publicly accessible location, don't send `.env` to anyone.
-
----
-
-### Option C — `config.yaml` fields
-
-Quickest option for a one-off test. Add these two lines to `config.yaml` (outside the `products:` block):
-
-```yaml
-username: "your@email.com"
-password: "yourpassword"
-```
-
-> ⚠️ `config.yaml` is also gitignored. But Option A or B are cleaner for regular use.
-
----
-
-### How the bot decides which method to use
-
-On every run, the decision happens in this exact order:
-
-```
-1. Does session/cookies.json exist?
-      → Load cookies → visit continente.pt → is the account menu visible?
-            YES → authenticated, skip login, start the cart run
-            NO  → session expired, fall through to step 2
-
-2. Is CONTINENTE_USER set? (from .env file or shell export)
-            YES → automated login with those credentials
-            NO  → check config.yaml
-
-3. Is username set in config.yaml?
-            YES → automated login with those credentials
-            NO  → print setup instructions and exit
-```
-
-The key point: **if you have valid saved cookies, your password is never read or used.** It's only a fallback for when the session has expired.
-
----
-
-## 📄 Run report
-
-After every run, a report is printed to your terminal and saved to `reports/`:
-
-```
-════════════════════════════════════════════════════════════════
-  CONTINENTE HERO
-════════════════════════════════════════════════════════════════
-
-  [1/8] 'Leite Meio Gordo Mimosa'  (qty: 2)
-    → ✅ Added (pid=6879912)
-  [2/8] 'Pão de Forma Integral'  (qty: 1)
-    → Searching: https://www.continente.pt/pesquisa/?q=pão de forma integral
-    → ✅ Added (pid=3021847)
-  [3/8] 'Bacalhau Salgado Seco'  (qty: 1)
-    → Searching: https://www.continente.pt/pesquisa/?q=bacalhau salgado seco
-    → Not found.
-
-  ══════════════════════════════════════════════════════════════
-  CONTINENTE HERO — RUN REPORT
-  2026-03-22 18:45:01
-  ══════════════════════════════════════════════════════════════
-
-  Total products in list : 8
-  ✅  Added to cart       : 6
-  ❌  Not found           : 1
-  🚫  Out of stock        : 1
-  ⚠️   Errors              : 0
-
-  ──────────────────────────────────────────────────────────────
-  ✅  ADDED TO CART
-  ──────────────────────────────────────────────────────────────
-  • Leite Meio Gordo Mimosa
-    qty: 2   pid: 6879912
-  • Pão de Forma Integral
-    qty: 1   pid: 3021847
-
-  ──────────────────────────────────────────────────────────────
-  ❌  NOT FOUND
-  ──────────────────────────────────────────────────────────────
-  • Bacalhau Salgado Seco
-    search query : bacalhau salgado seco
-    reason       : No search results for query: 'bacalhau salgado seco'
-
-  ──────────────────────────────────────────────────────────────
-  🚫  OUT OF STOCK
-  ──────────────────────────────────────────────────────────────
-  • Café Delta Q Cápsulas  (pid: 9912312)
-    Add-to-cart button is disabled (likely out of stock)
-```
-
----
-
-## 🧠 How it works — under the hood
-
-### The browser
-
-The bot runs a real **Chromium browser** (the same engine as Google Chrome), controlled by [Playwright](https://playwright.dev/). It behaves exactly like a human opening the site — JavaScript runs, cookies are set, sessions work. There is no API hacking or HTML parsing. The browser visits the actual pages.
-
-By default the browser runs **headless** (invisible). Run with `--visible` to watch it work in real time.
-
-### Login
-
-On every run, the bot navigates to `continente.pt` and checks for a logged-in UI element (the account menu). If it finds one, it's authenticated and skips login entirely.
-
-If not, it looks for credentials in this order:
-1. `session/cookies.json` — saved from a previous `--save-session` run
-2. `CONTINENTE_USER` / `CONTINENTE_PASS` environment variables (or `.env` file)
-3. `username` / `password` fields in `config.yaml`
-
-Continente uses a **React SSO system** hosted at `login.continente.pt` — the login form is injected by JavaScript, not static HTML. The bot tries multiple selector strategies to handle this robustly. After any successful login, it refreshes and saves the cookies immediately.
-
-### Finding products
-
-For each product in your list, the bot chooses the best strategy:
-
-**Direct URL** (`url:` field set) — navigates straight to the product detail page and clicks _Adicionar ao carrinho_. Zero ambiguity. This is the recommended approach for products you buy regularly.
-
-**Search** (`query:` or falling back to `name`) — navigates to `/pesquisa/?q=<term>`, waits for the Salesforce Commerce Cloud tile grid to render, then scans the results:
-- If `brand:` is set, it reads each tile's text and picks the first one that contains the brand name (case-insensitive)
-- If no brand match is found, it logs a warning and uses the first result
-- If there are no results at all, the product is marked `not_found`
-
-### Adding to cart
-
-Once the right product tile (or product page) is found:
-1. The bot checks whether the _Adicionar ao carrinho_ button exists and is **not disabled**. A disabled button means out of stock.
-2. It scrolls the button into view, pauses briefly (to behave like a human), and clicks.
-3. For quantities > 1, it attempts to use the quantity stepper input or the `+` button. If neither works, it logs a warning — you can adjust manually in the cart.
-
-### Failover guarantee
-
-Every product is wrapped in a `try/except`. The four possible outcomes are:
-
-| Status | What happened |
+| Cookie | Role |
 |---|---|
-| `✅ added` | Successfully in cart |
-| `❌ not_found` | Zero search results, or no add-to-cart button in the tile |
-| `🚫 out_of_stock` | Button found but disabled |
-| `⚠️ error` | Unexpected exception — timeout, layout change, network issue |
+| `dwsid` | Salesforce Commerce Cloud session ID — authenticates your session |
+| `dwanonymous` | Guest/anonymous tracking token |
+| `dw_*` | Demandware (SFCC) preference and cart state cookies |
 
-**No single product failure can stop the run.** The bot processes every item in your list and gives you a complete picture at the end.
+### Security
 
-### Anti-detection
+- `session/cookies.json` is in `.gitignore` — it is **never committed** to GitHub
+- `config.yaml` is also in `.gitignore`
+- Sessions typically last weeks to months
+- If the bot says "not logged in", just run **Option 2** again — takes 30 seconds
 
-The bot runs with a realistic Chrome user-agent string, sets the locale to `pt-PT`, the timezone to `Europe/Lisbon`, and disables Playwright's automation fingerprint flag. Continente uses Cloudflare and Salesforce behavioral tracking — the session-based approach (logging in once via a real browser) is the cleanest way to stay invisible.
+### Credential priority
+
+The bot checks these in order, using the first one that works:
+
+```
+1. session/cookies.json   ← saved session (recommended, most stable)
+2. CONTINENTE_USER / CONTINENTE_PASS environment variables
+3. username / password in config.yaml
+```
 
 ---
 
-## 🔄 Update
+## ⚠️ Python version compatibility
+
+**Supported: Python 3.11, 3.12, 3.13. Python 3.14 is blocked.**
+
+### Why 3.14 is blocked
+
+Playwright's `greenlet` dependency is a C extension that must be compiled from source if no pre-built binary wheel is available. As of 2026, `greenlet` publishes no wheel for Python 3.14, and compilation fails on macOS because Apple's Clang toolchain is missing `<cstdlib>` — a C++ standard library header that `greenlet`'s source includes.
+
+The error looks like this:
+```
+src/greenlet/greenlet.cpp:9:10: fatal error: 'cstdlib' file not found
+```
+
+**The fix:** `setup.sh` automatically detects Python 3.14 and installs Python 3.13 via Homebrew before continuing. You don't need to do anything — the installer handles it.
+
+---
+
+## 🔄 Staying up to date
+
+Use **Option 5** in the `shop` menu, or run directly:
 
 ```bash
 ./update.sh
 ```
 
-Pulls the latest code from GitHub and updates all Python packages and the Playwright Chromium binary.
+This pulls the latest code from GitHub (using `git reset --hard` to bypass any local change conflicts), upgrades all Python packages, and updates the Chromium binary.
 
 ---
 
-## 🗑️ Uninstall
+## 🧹 Uninstall
 
 ```bash
 ./uninstall.sh
 ```
 
-Removes the virtual environment, saved session, run reports, and the downloaded Chromium binary (~170 MB). Keeps `config.yaml` and `.env` intact.
+Removes: `.venv`, `session/`, `reports/`, and the Playwright Chromium cache. Your `config.yaml` and `configs/` folder are preserved. To remove everything including the repo:
+
+```bash
+rm -rf ~/continente-hero
+```
+
+And remove the alias from `~/.zshrc`:
+```bash
+# Delete the line:  alias shop='bash ~/continente-hero/shop.sh'
+```
+
+---
+
+## 🛠️ How it works under the hood
+
+### Browser engine
+
+Uses [Playwright](https://playwright.dev/) with Chromium — a full real browser, not an HTTP client. This means:
+- JavaScript-heavy pages (Continente.pt is a React SPA on Salesforce Commerce Cloud) work correctly
+- The bot behaves like a real user — real mouse clicks, real typing, real page loads
+- Anti-detection: real Chrome user-agent string, `--disable-blink-features=AutomationControlled`, Portuguese locale (`pt-PT`), Lisbon timezone
+
+### Product resolution strategy
+
+For each product, the bot tries two methods in order:
+
+```
+Has a url: field?
+  ├── YES → Navigate directly to the product page (PDP)
+  │         Fastest, most reliable, no ambiguity.
+  └── NO  → Search using the query: field (or name: if no query)
+            ├── Filter results by brand: if provided
+            ├── Pick first matching brand tile
+            └── Fall back to first result if no brand match
+```
+
+### Failover guarantee
+
+Every single product is wrapped in an individual `try/except`. If a product fails — for any reason — the bot:
+1. Records it as `not_found`, `out_of_stock`, or `error` with a description
+2. Continues to the next product without interruption
+3. Reports all outcomes at the end
+
+The bot **never exits early** because one item failed.
+
+### Run report
+
+After each run, a timestamped report is saved to `reports/` and printed in the terminal:
+
+```
+══════════════════════════════════════════════════════════════
+  CONTINENTE HERO — RUN REPORT  ·  2026-03-23 01:15:42
+══════════════════════════════════════════════════════════════
+
+  ✓  ADDED          Leite Meio Gordo Mimosa         ×2
+  ✓  ADDED          Pão de Forma Integral           ×1
+  ✓  ADDED          Azeite Extra Virgem Gallo       ×1
+  ✗  OUT OF STOCK   Bacalhau Salgado Seco
+  ✓  ADDED          Cerveja Super Bock 33cl         ×6
+
+══════════════════════════════════════════════════════════════
+  5 products  ·  4 added  ·  1 skipped
+══════════════════════════════════════════════════════════════
+```
 
 ---
 
 ## 🤝 Contributing
 
-1. Fork the repo
-2. Create a feature branch: `git checkout -b feat/my-feature`
-3. Commit: `git commit -m 'feat: add my feature'`
-4. Push: `git push origin feat/my-feature`
-5. Open a Pull Request
+Pull requests are welcome. To run locally:
 
-Bug reports and ideas welcome via [Issues](https://github.com/paulfxyz/continente-hero/issues).
+```bash
+git clone https://github.com/paulfxyz/continente-hero.git
+cd continente-hero
+bash setup.sh
+```
 
----
-
-## 📝 Changelog
-
-See [CHANGELOG.md](CHANGELOG.md) for the full version history.
+Open issues for bugs or feature requests: [github.com/paulfxyz/continente-hero/issues](https://github.com/paulfxyz/continente-hero/issues)
 
 ---
 
-## 📜 License
-
-[MIT](LICENSE) — free to use, fork, and modify.
-
----
-
-## 👤 Author
-
-**Paul Fleury**
-🌐 [paulfleury.com](https://paulfleury.com) · 💼 [LinkedIn](https://www.linkedin.com/in/paulfxyz/) · 🐙 [GitHub](https://github.com/paulfxyz)
-
----
-
-> ⭐ If this saves you a few minutes every week, drop a star — it helps others find it! ⭐
-
----
-
-*Designed and built in collaboration with [Perplexity Computer](https://www.perplexity.ai/)*
+*Designed and built in collaboration with [Perplexity Computer](https://www.perplexity.ai/)*  
+*[@paulfxyz](https://github.com/paulfxyz) · MIT License*
