@@ -67,7 +67,15 @@ BASE_URL   = "https://www.continente.pt"
 LOGIN_URL  = f"{BASE_URL}/login/"
 SEARCH_URL = f"{BASE_URL}/pesquisa/?q="
 CART_URL   = f"{BASE_URL}/checkout/carrinho/"
-CLEAR_TIMEOUT = 8_000   # per-item removal timeout — generous for SFCC re-renders
+
+# ── Cart-clear retry / backoff tuning ────────────────────────────────────────
+# SFCC cart XHRs can stall under server load — see _clear_loop() for full docs.
+REMOVE_SELECTOR  = 'button[aria-label="Apagar produto"]'  # confirmed via DOM inspection
+CLEAR_TIMEOUT    = 8_000    # ms — per-item count-drop poll timeout
+CLEAR_BACKOFF    = [2, 5, 15, 30, 60]  # s — wait ladder: 2 → 5 → 15 → 30 → 60 → 60…
+CLEAR_RELOAD_AT  = 3        # consecutive timeouts before reloading the page
+CLEAR_GIVE_UP_AT = 5        # consecutive timeouts before skipping an item
+CLEAR_MAX_SKIPS  = 5        # total skipped items before aborting the whole run
 
 # ── Timeouts (ms) ─────────────────────────────────────────────────────────────
 NAV_TIMEOUT     = 30_000   # page navigation
@@ -622,48 +630,15 @@ class ContinenteBot:
         # Give React time to render the cart items
         await self._page.wait_for_timeout(2_000)
 
-        # Selectors for the remove / delete button on a cart line item.
-        # We try them in order — first match wins on each iteration.
         # Correct selector confirmed via live DOM inspection.
-        # See clear_cart_interactive() for full technical notes.
-        REMOVE_SELECTOR = 'button[aria-label="Apagar produto"]'
+        # Full retry/backoff logic lives in the shared _clear_loop() helper.
+        removed, skipped = await _clear_loop(self._page, REMOVE_SELECTOR)
 
-        removed = 0
-        max_iterations = 100
-
-        for _ in range(max_iterations):
-            btns = await self._page.query_selector_all(REMOVE_SELECTOR)
-            count_before = len(btns)
-
-            if count_before == 0:
-                break
-
-            btn = btns[0]
-
-            try:
-                await btn.scroll_into_view_if_needed()
-                await self._page.wait_for_timeout(300)
-                await btn.click()
-
-                # Wait for count to drop
-                for _ in range(80):
-                    await self._page.wait_for_timeout(100)
-                    remaining = await self._page.query_selector_all(REMOVE_SELECTOR)
-                    if len(remaining) < count_before:
-                        break
-
-                await self._page.wait_for_timeout(600)
-                removed += 1
-                print(f"    → Removed item {removed}  ({count_before - 1} left)")
-
-            except Exception as exc:  # noqa: BLE001
-                print(f"    [WARN] Could not click remove button: {exc}")
-                break
-
-        if removed == 0:
+        if removed == 0 and skipped == 0:
             print("  [CLEAR CART] Cart was already empty — nothing to remove.")
         else:
-            print(f"  [CLEAR CART] ✅ Removed {removed} item(s). Cart is now empty.")
+            print(f"  [CLEAR CART] ✅ Removed {removed} item(s)."
+                  + (f" ⚠ {skipped} item(s) could not be removed." if skipped else ""))
 
         return removed
 
@@ -776,6 +751,177 @@ class ContinenteBot:
 # ─────────────────────────────────────────────────────────────────────────────
 #  Interactive session-save flow
 # ─────────────────────────────────────────────────────────────────────────────
+
+async def _clear_loop(page, selector: str) -> tuple[int, int]:
+    """
+    Shared cart-clearing engine used by both clear_cart() and
+    clear_cart_interactive().
+
+    Retry / backoff architecture
+    ────────────────────────────
+    SFCC's cart XHR can stall under load — the DOM count does not drop within
+    the poll window even though the click was registered. Naively retrying
+    immediately makes things worse (hammering a rate-limited endpoint).
+
+    Strategy:
+      1. Click the first remove button.
+      2. Poll for count-drop every 200 ms for up to CLEAR_TIMEOUT ms.
+      3. If count dropped → success, move to next item.
+      4. If count did NOT drop (timeout) → track consecutive_timeouts:
+           • Every CLEAR_RELOAD_AT consecutive timeouts: reload the cart page
+             (forces a fresh server-side cart state, clears any stuck XHR).
+           • Wait using the backoff ladder: [2s, 5s, 15s, 30s, 60s, 60s, …]
+           • Retry the same item.
+           • After CLEAR_GIVE_UP_AT consecutive timeouts on one item: skip it,
+             add to the "skipped" list, reset consecutive counter, move on.
+      5. After CLEAR_MAX_SKIPS total skips: abort and report.
+      6. After the main loop finishes: retry any skipped items once with a
+         fresh page reload and full backoff — they may have been stuck due to
+         transient server pressure that has since cleared.
+
+    Returns (removed: int, skipped: int).
+    """
+    removed            = 0
+    skipped            = 0
+    consecutive_fails  = 0   # resets on each successful removal
+    backoff_idx        = 0   # index into CLEAR_BACKOFF ladder
+    max_iterations     = 150  # hard cap — a cart with 100+ items is unusual
+
+    async def _poll_count_drop(current_count: int) -> bool:
+        """Poll until button count < current_count. Returns True on success."""
+        deadline_ms = CLEAR_TIMEOUT
+        interval_ms = 200
+        elapsed     = 0
+        while elapsed < deadline_ms:
+            await page.wait_for_timeout(interval_ms)
+            elapsed += interval_ms
+            try:
+                remaining = await page.query_selector_all(selector)
+                if len(remaining) < current_count:
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
+        return False  # timed out
+
+    async def _reload_cart() -> None:
+        """Reload the cart page and wait for React to settle."""
+        print("  [CLEAR CART] ↺  Reloading cart page to recover from stall…")
+        try:
+            await page.reload(timeout=NAV_TIMEOUT, wait_until="domcontentloaded")
+            await page.wait_for_timeout(2_500)
+        except Exception:  # noqa: BLE001
+            await page.wait_for_timeout(3_000)
+
+    for iteration in range(max_iterations):
+        # Fresh query every iteration — React replaces the whole list on render
+        try:
+            btns = await page.query_selector_all(selector)
+        except Exception:  # noqa: BLE001
+            btns = []
+
+        count_before = len(btns)
+        if count_before == 0:
+            break  # Cart empty — done
+
+        btn = btns[0]
+
+        # ── Click ─────────────────────────────────────────────────────────────
+        try:
+            await btn.scroll_into_view_if_needed()
+            await page.wait_for_timeout(300)
+            await btn.click()
+        except Exception as exc:  # noqa: BLE001
+            print(f"  [CLEAR CART] ✗  Click failed: {exc}")
+            consecutive_fails += 1
+            if consecutive_fails >= CLEAR_GIVE_UP_AT:
+                print(f"  [CLEAR CART] ⚠  {CLEAR_GIVE_UP_AT} consecutive failures — skipping item.")
+                skipped += 1
+                consecutive_fails = 0
+                backoff_idx = 0
+                if skipped >= CLEAR_MAX_SKIPS:
+                    print(f"  [CLEAR CART] ✗  Too many skips ({CLEAR_MAX_SKIPS}) — aborting.")
+                    break
+            continue
+
+        # ── Poll for count drop ────────────────────────────────────────────────
+        success = await _poll_count_drop(count_before)
+
+        if success:
+            # Happy path
+            await page.wait_for_timeout(600)   # let "Anular" undo row settle
+            removed         += 1
+            consecutive_fails = 0
+            backoff_idx       = 0
+            remaining_now     = count_before - 1
+            print(f"  [CLEAR CART] ✓  Item {removed} removed  ({remaining_now} left)")
+        else:
+            # Timeout — the XHR did not complete in time
+            consecutive_fails += 1
+            wait_s = CLEAR_BACKOFF[min(backoff_idx, len(CLEAR_BACKOFF) - 1)]
+            backoff_idx += 1
+
+            print(
+                f"  [CLEAR CART] ⏱  Count did not drop after {CLEAR_TIMEOUT//1000}s "
+                f"(fail #{consecutive_fails}) — waiting {wait_s}s…"
+            )
+            await asyncio.sleep(wait_s)
+
+            # Reload every CLEAR_RELOAD_AT consecutive timeouts
+            if consecutive_fails % CLEAR_RELOAD_AT == 0:
+                await _reload_cart()
+
+            # Give up on this item after too many consecutive failures
+            if consecutive_fails >= CLEAR_GIVE_UP_AT:
+                print(
+                    f"  [CLEAR CART] ⚠  Item could not be removed after "
+                    f"{CLEAR_GIVE_UP_AT} attempts — skipping."
+                )
+                skipped          += 1
+                consecutive_fails  = 0
+                backoff_idx        = 0
+                if skipped >= CLEAR_MAX_SKIPS:
+                    print(f"  [CLEAR CART] ✗  Too many skips ({CLEAR_MAX_SKIPS}) — aborting.")
+                    break
+
+    # ── Retry pass — reload and attempt any lingering items once more ──────────
+    try:
+        remaining_btns = await page.query_selector_all(selector)
+    except Exception:  # noqa: BLE001
+        remaining_btns = []
+
+    if remaining_btns and skipped > 0:
+        print(
+            f"\n  [CLEAR CART] ↺  Retry pass — {len(remaining_btns)} item(s) still present. "
+            "Reloading and retrying once…"
+        )
+        await _reload_cart()
+        await asyncio.sleep(5)
+
+        retry_btns = await page.query_selector_all(selector)
+        retry_removed = 0
+        for retry_btn in retry_btns:
+            try:
+                count_now = len(await page.query_selector_all(selector))
+                await retry_btn.scroll_into_view_if_needed()
+                await page.wait_for_timeout(400)
+                await retry_btn.click()
+                ok = await _poll_count_drop(count_now)
+                if ok:
+                    await page.wait_for_timeout(800)
+                    removed       += 1
+                    retry_removed += 1
+                    skipped        = max(0, skipped - 1)
+                    print(f"  [CLEAR CART] ✓  Retry removed item  ({count_now - 1} left)")
+                else:
+                    await asyncio.sleep(10)
+            except Exception:  # noqa: BLE001
+                pass
+
+        if retry_removed:
+            print(f"  [CLEAR CART] Retry pass recovered {retry_removed} item(s).")
+
+    return removed, skipped
+
 
 async def clear_cart_interactive(cfg: dict) -> None:
     """
@@ -895,69 +1041,17 @@ async def clear_cart_interactive(cfg: dict) -> None:
     # Give React time to render the cart
     await page.wait_for_timeout(2_000)
 
-    # ── The correct remove button selector for continente.pt ─────────────────
-    # Live DOM inspection confirms the button uses aria-label="Apagar produto"
-    # (Portuguese for "Delete product"). Class-based selectors do not work —
-    # SFCC uses generic utility classes that do not contain "remove"/"delete".
-    #
-    # Post-removal behaviour (observed):
-    #   - Item disappears from DOM IMMEDIATELY (optimistic UI update)
-    #   - A transient "Produto removido" + "Anular" (undo) inline row appears
-    #     in the same slot, then auto-dismisses after ~3-5 seconds
-    #   - The remove button count decreases synchronously
-    #
-    # Wait strategy:
-    #   We count the remove buttons BEFORE clicking, then wait until the count
-    #   drops by 1. This is more reliable than wait_for_element_state("detached")
-    #   because the optimistic update means the element is gone before the XHR
-    #   confirms. We also add a small fixed pause after each removal to let the
-    #   "Anular" undo row settle — clicking too fast can interfere with the
-    #   SFCC cart state.
-    REMOVE_SELECTOR = 'button[aria-label="Apagar produto"]'
+    # Correct selector confirmed via live DOM inspection.
+    # Full retry/backoff logic lives in the shared _clear_loop() helper.
+    removed, skipped = await _clear_loop(page, REMOVE_SELECTOR)
 
-    removed = 0
-    max_iterations = 100  # generous cap — handles large carts
-
-    for _ in range(max_iterations):
-        # Re-query fresh on every iteration — React re-renders the whole list
-        btns = await page.query_selector_all(REMOVE_SELECTOR)
-        count_before = len(btns)
-
-        if count_before == 0:
-            break  # Cart is empty — done
-
-        btn = btns[0]  # always click the first remaining button
-
-        try:
-            await btn.scroll_into_view_if_needed()
-            await page.wait_for_timeout(300)
-            await btn.click()
-
-            # Wait for the count to drop (confirms the optimistic UI updated)
-            # Timeout: 8 s per item — generous for slow connections
-            for _ in range(80):  # 80 × 100 ms = 8 s max
-                await page.wait_for_timeout(100)
-                remaining = await page.query_selector_all(REMOVE_SELECTOR)
-                if len(remaining) < count_before:
-                    break
-
-            # Small extra pause so the "Anular" undo row can settle before
-            # we click the next remove button. Without this, SFCC occasionally
-            # counts the undo as a re-add and the cart item reappears.
-            await page.wait_for_timeout(600)
-
-            removed += 1
-            remaining_count = count_before - 1
-            print(f"    → Removed item {removed}  ({remaining_count} left)")
-
-        except Exception as exc:  # noqa: BLE001
-            print(f"    [WARN] Could not click remove button: {exc}")
-            break
-
-    if removed == 0:
+    if removed == 0 and skipped == 0:
         print("  [CLEAR CART] Cart was already empty — nothing to remove.")
     else:
-        print(f"  [CLEAR CART] ✅ Removed {removed} item(s). Cart is now empty.")
+        print(f"  [CLEAR CART] ✅ Removed {removed} item(s)."
+              + (f" ⚠ {skipped} item(s) timed out and were skipped." if skipped else ""))
+        if skipped:
+            print("  [CLEAR CART] Refresh the cart in your browser to verify.")
 
     # Save refreshed cookies after clearing
     save_session(await context.cookies())
