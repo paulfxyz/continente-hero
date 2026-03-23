@@ -1,3 +1,78 @@
+## 🔖 [2.1.2] — 2026-03-23
+
+### 🐛 Fix — Clear cart only removed 1 item (wrong selectors + wrong wait strategy)
+
+#### Root cause — the DOM inspection findings
+
+All ten CSS selectors in the original `REMOVE_SELECTORS` list were wrong. Live DOM inspection of the actual continente.pt cart page revealed:
+
+| What we tried | What actually exists |
+|---|---|
+| `button.remove-product` | ❌ no such class |
+| `button[data-action='remove']` | ❌ no such attribute |
+| `.cart-item__remove button` | ❌ no such class |
+| `button[aria-label='Remover']` | ❌ wrong Portuguese — the tooltip says "Remover" but the `aria-label` is different |
+| `button[aria-label='Remove']` | ❌ wrong language entirely |
+| …all others | ❌ not present |
+
+The actual remove button HTML:
+```html
+<button aria-label="Apagar produto" title="Remover produto">
+  <img src="[trash-icon.svg]" />
+</button>
+```
+
+**"Apagar produto"** is Portuguese for "Delete product". No class names containing "remove", "delete", "apagar", or "eliminar" are present. The correct selector is:
+
+```python
+REMOVE_SELECTOR = 'button[aria-label="Apagar produto"]'
+```
+
+This returns all 30 buttons on a full cart. Our old selectors returned 0. The first click happened to work because Playwright sometimes resolves partial matches — but it found the button by a different path and could not find it again for subsequent items.
+
+---
+
+#### Root cause — the wait strategy
+
+The original code used `wait_for_element_state("detached")` to detect when SFCC had processed a removal. This was wrong for two reasons:
+
+1. **Optimistic UI** — continente.pt removes the item from the DOM **immediately and synchronously** on click, before the XHR response returns. The element is already "detached" before we even register the wait, so Playwright either times out or races past it.
+
+2. **"Anular" undo row** — after removal, an inline "Produto removido" + "Anular" (undo) row appears in the same slot. Clicking the next remove button too quickly can interfere with SFCC's cart state while the undo window is still active, occasionally causing the item to be re-added.
+
+**The correct wait strategy:**
+
+```python
+# Count buttons BEFORE clicking
+btns = await page.query_selector_all(REMOVE_SELECTOR)
+count_before = len(btns)
+
+await btn.click()
+
+# Poll until the count drops — confirms optimistic update completed
+for _ in range(80):          # max 8 seconds
+    await page.wait_for_timeout(100)
+    remaining = await page.query_selector_all(REMOVE_SELECTOR)
+    if len(remaining) < count_before:
+        break
+
+# Extra 600 ms for the "Anular" undo row to settle
+await page.wait_for_timeout(600)
+```
+
+Total per-item cost: ~700 ms on a fast connection, ~2 s on a slow one. For a 30-item cart this takes about 20–60 seconds — reasonable and reliable.
+
+---
+
+#### Summary of changes
+
+- 🐛 `fix:` `continente.py` — `clear_cart_interactive()`: replaced 10 wrong selectors with `button[aria-label="Apagar produto"]`
+- 🐛 `fix:` `continente.py` — `clear_cart()` method: same selector fix
+- 🐛 `fix:` `continente.py` — wait strategy replaced: count-drop polling + 600 ms undo-row settle, replaces broken `wait_for_element_state("detached")`
+- 🏷️ `bump:` version banners → v2.1.2 in all five `.sh` files + README badge
+
+---
+
 ## 🔖 [2.1.1] — 2026-03-23
 
 ### 🐛 Fix — Clear cart: session fallback + integrated login flow
