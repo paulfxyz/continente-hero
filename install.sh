@@ -8,7 +8,7 @@
 #
 #  What this script does — in order:
 #    1. Checks you are on macOS
-#    2. Finds Python 3.11–3.13  (3.14+ is blocked — see WHY below)
+#    2. Finds Python 3.11+  (3.14 now works — greenlet 3.3+ has a cp314 wheel)
 #       └─ If missing: offers to run  brew install python@3.13  for you
 #    3. Wipes any existing .venv entirely and rebuilds it clean
 #       └─ This is intentional — a stale venv from the wrong Python causes
@@ -18,12 +18,10 @@
 #    6. Scaffolds .env, session/, and reports/ if not already present
 #       └─ config.yaml and session/cookies.json are NEVER touched
 #
-#  WHY Python 3.14 is blocked:
-#    Playwright depends on  greenlet  — a C extension that needs a pre-built
-#    binary wheel to install. As of early 2026, greenlet publishes no wheel
-#    for Python 3.14, and building it from source fails on macOS because
-#    Apple's Clang ships without some C++ standard library headers that
-#    greenlet's source expects. The fix is simply to use Python 3.13.
+#  Python version support:
+#    Python 3.11–3.14 are all supported. 3.13 is preferred (most tested).
+#    If you have 3.14, it works — playwright>=1.50 requires greenlet>=3.1.1
+#    which ships pre-built universal2 wheels for all Python versions.
 #
 #  Safe to re-run: session cookies and config.yaml are never modified.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -90,50 +88,37 @@ print(v.major, v.minor)
 }
 
 PYTHON_BIN=""
-BLOCKED_VER=""
 
-# Ordered preference: 3.13 → 3.12 → 3.11
-# We try explicit versioned binaries first.
-# The bare  python3  alias is checked last because on many Homebrew setups it
-# points to the most-recently-installed Python — which may be 3.14.
-for candidate in python3.13 python3.12 python3.11 python3; do
+# Ordered preference: 3.13 → 3.14 → 3.12 → 3.11, then bare python3.
+# NOTE: Python 3.14 is now supported — greenlet 3.3+ ships a cp314 wheel.
+for candidate in python3.13 python3.14 python3.12 python3.11 python3; do
     ver_str=$(python_ver "$candidate" 2>/dev/null || true)
     [[ -z "$ver_str" ]] && continue
 
-    # Parse major and minor safely — works for "3 13", "3 14", etc.
     read -r major minor <<< "$ver_str"
+    [[ "$major" -ne 3 ]] && continue
+    [[ "$minor" -lt 11 ]] && continue
 
-    if [[ "$major" -ne 3 ]]; then
-        continue
-    fi
-
-    if [[ "$minor" -ge 14 ]]; then
-        # Record the blocked version for the error message, keep scanning.
-        BLOCKED_VER="$major.$minor"
-        continue
-    fi
-
-    if [[ "$minor" -ge 11 ]]; then
-        PYTHON_BIN="$candidate"
-        info "Found $candidate ($major.$minor)"
-        break
-    fi
-    # < 3.11: skip silently
+    PYTHON_BIN="$candidate"
+    info "Found $candidate ($major.$minor)"
+    break
 done
 
 # Apple Silicon Homebrew puts versioned binaries here even when not in PATH
 if [[ -z "$PYTHON_BIN" ]]; then
     for hb_bin in \
         /opt/homebrew/bin/python3.13 \
+        /opt/homebrew/bin/python3.14 \
         /opt/homebrew/bin/python3.12 \
         /opt/homebrew/bin/python3.11 \
         /usr/local/bin/python3.13 \
+        /usr/local/bin/python3.14 \
         /usr/local/bin/python3.12 \
         /usr/local/bin/python3.11; do
         ver_str=$(python_ver "$hb_bin" 2>/dev/null || true)
         [[ -z "$ver_str" ]] && continue
         read -r major minor <<< "$ver_str"
-        if [[ "$major" -eq 3 && "$minor" -ge 11 && "$minor" -lt 14 ]]; then
+        if [[ "$major" -eq 3 && "$minor" -ge 11 ]]; then
             PYTHON_BIN="$hb_bin"
             info "Found $hb_bin ($major.$minor)"
             break
@@ -144,20 +129,7 @@ fi
 # ── No valid Python found ─────────────────────────────────────────────────────
 if [[ -z "$PYTHON_BIN" ]]; then
     echo ""
-    if [[ -n "$BLOCKED_VER" ]]; then
-        err "Python $BLOCKED_VER is installed, but is NOT compatible."
-        echo ""
-        echo -e "  ${BOLD}Why Python $BLOCKED_VER does not work:${RESET}"
-        echo "  Playwright depends on a C extension called  greenlet."
-        echo "  greenlet has no pre-built binary wheel for Python 3.14+,"
-        echo "  and building it from source fails on macOS because Apple's"
-        echo "  Clang does not ship the C++ headers that greenlet needs."
-        echo "  The fix: use Python 3.13."
-        echo ""
-        echo "  Supported range: Python 3.11 – 3.13"
-    else
-        err "No compatible Python found. Need Python 3.11–3.13."
-    fi
+    err "No compatible Python found. Need Python 3.11 or higher."
     echo ""
 
     # ── Offer automatic install via Homebrew ──────────────────────────────────
@@ -239,7 +211,9 @@ section "4 / 5  Python packages"
 
 # Show package install progress (not --quiet) so the user sees something
 # happening during the ~30-second Playwright wheel download.
-pip install -r "$SCRIPT_DIR/requirements.txt"
+# --upgrade ensures pip resolves fresh versions and never reuses a cached
+# broken wheel (e.g. greenlet 3.0.3 which fails to compile on macOS 26).
+pip install --upgrade -r "$SCRIPT_DIR/requirements.txt"
 info "All packages installed"
 
 # ── 5. Playwright Chromium ────────────────────────────────────────────────────
