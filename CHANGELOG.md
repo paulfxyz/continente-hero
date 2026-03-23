@@ -7,6 +7,26 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ---
 
+## 🔖 [2.0.4] — 2026-03-23
+
+### 🔧 Audit — stale version banners in `install.sh` and `uninstall.sh`
+
+Full cross-file version audit revealed two files that were missed in previous bumps:
+
+- `install.sh` banner still read `v2.0.2` — corrected to `v2.0.4`
+- `uninstall.sh` banner still read `CONTINENTE CART BOT — Uninstall` (the old pre-rename branding from v1.x) — corrected to `CONTINENTE HERO — Uninstall  (v2.0.4)`
+
+No functional changes — purely a consistency and branding audit pass.
+
+#### Changes in this patch
+
+- 🏷️ `fix:` `install.sh` — banner version corrected from v2.0.2 → v2.0.4
+- 🏷️ `fix:` `uninstall.sh` — banner renamed from `CONTINENTE CART BOT` → `CONTINENTE HERO` + version added
+- 🏷️ `bump:` version banners → v2.0.4 in `shop.sh`, `setup.sh`, `update.sh`
+- 📖 `docs:` `README.md` — badge + menu display updated to v2.0.4
+
+---
+
 ## 🔖 [2.0.3] — 2026-03-23
 
 ### ✨ Feature — Option 4 is now a full list management sub-menu
