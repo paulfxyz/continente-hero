@@ -7,6 +7,57 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ---
 
+## 🔖 [2.0.1] — 2026-03-23
+
+### 🐛 Critical fix — `curl | bash` stdin pipe contamination
+
+This patch resolves the root cause of every installation failure reported since v1.3.0: the `curl -fsSL URL | bash` pipe was being contaminated by stdout output from subprocesses (`brew`, `git`, `pip`, `playwright`), causing bash to interpret tool output as commands.
+
+---
+
+#### The bug — technical explanation
+
+When bash is invoked as `curl URL | bash`, it reads its script from **stdin** — the same file descriptor connected to curl's output. This is how the pipe works: curl writes the script, bash reads it.
+
+The problem is that stdin remains "live" throughout the script's execution. Any child process that writes to **stdout** is writing to the same file descriptor that bash is using to read its next commands. Bash then interprets that output as shell code.
+
+`brew install python@3.13` is a prime offender. It outputs:
+- Download progress lines (harmless but noisy)
+- Path configuration blocks that look like shell commands
+- Lines matching the variable names used in our script (`section`, `REPO_URL`, etc.)
+
+The result was non-deterministic: the installer appeared to succeed but skipped critical steps, or it crashed mid-run with errors like `command not found: section`, or the `shop` alias was never written because the alias-writing block had already been "consumed" from stdin.
+
+#### The fix
+
+Every subprocess that writes to stdout now redirects to stderr:
+
+```bash
+brew install python@3.13                     >&2
+git clone "$REPO_URL" "$CONTINENTE_DIR"      >&2
+git reset --hard origin/main                  >&2
+pip install -r requirements.txt               >&2
+"$VENV_DIR/bin/playwright" install chromium  >&2
+```
+
+Stderr (`>&2`) always flows to the terminal — users still see all output. But it does **not** enter the curl pipe. Stdin stays clean for bash to read the actual script.
+
+---
+
+#### Changes in this patch
+
+- 🐛 `fix:` `brew install python@3.13 >&2` — prevents brew stdout entering curl pipe
+- 🐛 `fix:` `git clone ... >&2` — same fix for clone output
+- 🐛 `fix:` `git reset --hard ... >&2` — same fix for reset output
+- 🐛 `fix:` `pip install ... >&2` — same fix for pip install output
+- 🐛 `fix:` `playwright install chromium >&2` — same fix for Chromium download
+- 🏷️ `fix:` `shop.sh` version banner updated to `v2.0.1`
+- 🏷️ `fix:` `update.sh` version banner updated to `v2.0.1`
+- 📖 `docs:` `INSTALL.md` — full rewrite for v2 era: curl installer walkthrough, session deep-dive, `shop` alias setup, troubleshooting table with every known error and fix
+- 📖 `docs:` `README.md` — version badge updated to 2.0.1; new “Challenges, bottlenecks & how we solved them” section documenting all 9 technical problems with code examples
+
+---
+
 ## 🔖 [2.0.0] — 2026-03-23
 
 ### 🚀 Major release — interactive menu, multi-config, shell alias
