@@ -1,10 +1,21 @@
-# requirements.txt — Continente Cart Bot
+# ─────────────────────────────────────────────────────────────────────────────
+#  requirements.txt — Continente Cart Bot
+# ─────────────────────────────────────────────────────────────────────────────
+#
+#  greenlet NOTE: playwright 1.44 pinned greenlet==3.0.3, which has no
+#  pre-built wheel for macOS 26 (Tahoe/Sequoia) and fails to compile from
+#  source. playwright>=1.50 requires greenlet>=3.1.1, which ships a
+#  universal2 pre-built wheel that installs without any compilation.
+#  This is why we use playwright>=1.50 and let pip resolve greenlet.
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Browser automation — runs a real Chromium instance
-playwright==1.44.0
+# Minimum 1.50 required: earlier versions pull greenlet 3.0.3 which
+# has no pre-built wheel for macOS 26 and fails to compile from source.
+playwright>=1.50.0
 
 # YAML config parsing
-pyyaml==6.0.1
+pyyaml>=6.0.1
 
 # .env file support (CONTINENTE_USER / CONTINENTE_PASS)
-python-dotenv==1.0.1
+python-dotenv>=1.0.1
