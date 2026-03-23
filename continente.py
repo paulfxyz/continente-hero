@@ -795,6 +795,190 @@ class ContinenteBot:
 #  Interactive session-save flow
 # ─────────────────────────────────────────────────────────────────────────────
 
+async def clear_cart_interactive(cfg: dict) -> None:
+    """
+    Clear every item from the Continente cart.
+
+    Full flow (single Playwright session, always visible):
+    ──────────────────────────────────────────────────────
+    1. Launch a visible Chromium window.
+    2. Load any saved session cookies.
+    3. Check if we are already logged in.
+       YES → go straight to clearing.
+       NO  → navigate to the login page, prompt the user to log in manually,
+             wait for Enter, save the fresh cookies, THEN clear — all in the
+             same browser context without closing and reopening.
+
+    Why one continuous session?
+    ───────────────────────────
+    If we saved cookies to disk and immediately reloaded them in a new
+    ContinenteBot instance, there would be a race: SFCC session cookies
+    are bound to the browser context that created them. Reloading them into
+    a fresh context sometimes triggers a CSRF / session validation check and
+    drops the user back to the login page. Keeping the same context alive
+    from login through to cart clearing bypasses this entirely.
+    """
+    _banner("CLEAR CART")
+
+    playwright = await async_playwright().start()
+    browser    = await playwright.chromium.launch(
+        headless = False,
+        slow_mo  = 100,
+        args     = ["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+    )
+    context = await browser.new_context(
+        viewport    = {"width": 1280, "height": 900},
+        user_agent  = (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/123.0.0.0 Safari/537.36"
+        ),
+        locale      = "pt-PT",
+        timezone_id = "Europe/Lisbon",
+    )
+    page = await context.new_page()
+
+    # ── Step 1: load saved session if available ───────────────────────────────
+    saved = load_session()
+    if saved:
+        await context.add_cookies(saved)
+        print("  [SESSION] Loaded saved cookies — checking if still valid…")
+    else:
+        print("  [SESSION] No saved session found.")
+
+    # ── Step 2: check login state ─────────────────────────────────────────────
+    await page.goto(BASE_URL, timeout=NAV_TIMEOUT)
+    await page.wait_for_load_state("domcontentloaded")
+
+    logged_in = False
+    try:
+        await page.wait_for_selector(
+            "a[href*='/conta/'], .ct-header--user-logged, "
+            "[data-user-logged], .ct-user-info--name",
+            timeout=7_000,
+        )
+        logged_in = True
+        print("  [LOGIN] ✓ Session valid — proceeding to clear cart.")
+    except PlaywrightTimeoutError:
+        logged_in = False
+
+    # ── Step 3: if not logged in, prompt for manual login ─────────────────────
+    if not logged_in:
+        print()
+        print("  [LOGIN] Session expired or missing.")
+        print("  A browser window is open. Log in to continente.pt,")
+        print("  then come back here and press Enter.")
+        print()
+        await page.goto(LOGIN_URL, timeout=NAV_TIMEOUT)
+        input("  Press Enter once you are logged in… ")
+        print()
+
+        # Verify login succeeded
+        try:
+            await page.wait_for_selector(
+                "a[href*='/conta/'], .ct-header--user-logged, "
+                "[data-user-logged], .ct-user-info--name",
+                timeout=10_000,
+            )
+            print("  [LOGIN] ✓ Login confirmed.")
+        except PlaywrightTimeoutError:
+            print("  [LOGIN] ✗ Could not confirm login. Attempting to clear anyway…")
+
+        # Save the fresh cookies for future runs
+        save_session(await context.cookies())
+        print("  [SESSION] Fresh session saved for future runs.")
+        print()
+
+    # ── Step 4: clear the cart ────────────────────────────────────────────────
+    print("  [CLEAR CART] Navigating to cart…")
+    await page.goto(CART_URL, timeout=NAV_TIMEOUT)
+    await page.wait_for_load_state("domcontentloaded")
+
+    # Dismiss cookie/GDPR banner if it appears
+    for sel in [
+        "button#onetrust-accept-btn-handler",
+        "button.accept-cookies",
+        "button:has-text('Aceitar todos')",
+        "button:has-text('Aceitar')",
+    ]:
+        try:
+            btn = await page.query_selector(sel)
+            if btn:
+                await btn.click()
+                await page.wait_for_timeout(600)
+                break
+        except Exception:  # noqa: BLE001
+            continue
+
+    # Give React time to render the cart
+    await page.wait_for_timeout(2_000)
+
+    REMOVE_SELECTORS = [
+        "button.remove-product",
+        "button[data-action='remove']",
+        ".cart-item__remove button",
+        "button.btn-remove-item",
+        "button[aria-label='Remover']",
+        "button[aria-label='Remove']",
+        ".product-info__remove button",
+        "[data-action='remove-product'] button",
+        ".ct-cart-item__remove button",
+        "button.icon-close[data-pid]",
+    ]
+
+    removed = 0
+    max_iterations = 50
+
+    for _ in range(max_iterations):
+        btn = None
+        for sel in REMOVE_SELECTORS:
+            try:
+                btn = await page.query_selector(sel)
+                if btn:
+                    break
+            except Exception:  # noqa: BLE001
+                continue
+
+        if not btn:
+            break  # No more remove buttons — cart is empty
+
+        try:
+            await btn.scroll_into_view_if_needed()
+            await page.wait_for_timeout(400)
+            await btn.click()
+
+            # Wait for SFCC to re-render before next iteration
+            try:
+                await btn.wait_for_element_state("detached", timeout=CLEAR_TIMEOUT)
+            except Exception:  # noqa: BLE001
+                await page.wait_for_timeout(1_500)
+
+            removed += 1
+            print(f"    → Removed item {removed}")
+
+        except Exception as exc:  # noqa: BLE001
+            print(f"    [WARN] Could not click remove button: {exc}")
+            break
+
+    if removed == 0:
+        print("  [CLEAR CART] Cart was already empty — nothing to remove.")
+    else:
+        print(f"  [CLEAR CART] ✅ Removed {removed} item(s). Cart is now empty.")
+
+    # Save refreshed cookies after clearing
+    save_session(await context.cookies())
+
+    # Stay on cart page so user can visually confirm
+    print(f"  Leaving browser open on cart page — verify it is empty.")
+    print(f"  Close the browser window when done.")
+    print()
+    input("  Press Enter to close the browser and return to the menu… ")
+
+    await browser.close()
+    await playwright.stop()
+    print(f"\n  Done — {removed} item(s) removed.\n")
+
+
 async def save_session_interactive(cfg: dict) -> None:
     """
     Open a visible Chromium window at the login page.
@@ -868,21 +1052,16 @@ async def main() -> None:
         return
 
     if "--clear-cart" in sys.argv:
-        # Clear-cart runs with a visible browser so the user can watch
-        # items disappear and verify the cart is actually empty.
-        # Headless would work too, but visible builds trust.
-        cfg["headless"] = "--headless" in sys.argv  # default: visible
-        async with ContinenteBot(cfg) as bot:
-            if not await bot.login():
-                print("\n  [ABORT] Cannot proceed without authentication.\n")
-                sys.exit(1)
-            removed = await bot.clear_cart()
-            save_session(await bot._context.cookies())
-            # Navigate to the now-empty cart so the user can confirm
-            await bot._page.goto(CART_URL, timeout=NAV_TIMEOUT)
-            if not cfg["headless"]:
-                await bot._page.wait_for_timeout(3_000)
-        print(f"\n  Cart cleared — {removed} item(s) removed.\n")
+        # Clear-cart always uses a visible browser so the user can:
+        #   a) Log in manually if the saved session is missing or expired
+        #   b) Watch every item disappear and confirm the cart is empty
+        #
+        # The flow is a single continuous Playwright session — we never
+        # open and close the browser between "log in" and "clear". This
+        # avoids the cookie timing issue that would occur if we saved
+        # cookies to disk and immediately reloaded them in a new context.
+        cfg["headless"] = False  # always visible for clear-cart
+        await clear_cart_interactive(cfg)
         return
 
     if "--visible" in sys.argv:
