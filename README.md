@@ -50,7 +50,7 @@ That opens an interactive menu:
 
 ```
   ╔══════════════════════════════════════════════════╗
-  ║   🦸  continente-hero  ·  v2.1.0               ║
+  ║   🦸  continente-hero  ·  v2.1.1               ║
   ╚══════════════════════════════════════════════════╝
 
   Active list: config.yaml
