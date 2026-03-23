@@ -1,7 +1,7 @@
 # 🦸 continente-hero
 
-[![Version](https://img.shields.io/badge/Version-2.0.1-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
-[![Python](https://img.shields.io/badge/Python-3.11--3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Version](https://img.shields.io/badge/Version-2.0.2-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
+[![Python](https://img.shields.io/badge/Python-3.11--3.14-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-45ba4b?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/)
 [![macOS](https://img.shields.io/badge/macOS-native-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
@@ -50,7 +50,7 @@ That opens an interactive menu:
 
 ```
   ╔══════════════════════════════════════════════════╗
-  ║   🦸  continente-hero  ·  v2.0.1               ║
+  ║   🦸  continente-hero  ·  v2.0.2               ║
   ╚══════════════════════════════════════════════════╝
 
   Active list: config.yaml
@@ -241,18 +241,17 @@ The bot checks these in order, using the first one that works:
 
 ## ⚠️ Python version compatibility
 
-**Supported: Python 3.11, 3.12, 3.13. Python 3.14 is blocked.**
+**Supported: Python 3.11, 3.12, 3.13, 3.14.** Python 3.13 is preferred.
 
-### Why 3.14 is blocked
+### Why 3.14 previously failed (and is now fixed)
 
-Playwright's `greenlet` dependency is a C extension that must be compiled from source if no pre-built binary wheel is available. As of 2026, `greenlet` publishes no wheel for Python 3.14, and compilation fails on macOS because Apple's Clang toolchain is missing `<cstdlib>` — a C++ standard library header that `greenlet`'s source includes.
+Earlier versions of continente-hero pinned `playwright==1.44.0`, which pulled `greenlet==3.0.3` as a dependency. `greenlet` is a C extension that must be compiled from source if no pre-built wheel exists. `greenlet 3.0.3` had no wheel for macOS 26 (Tahoe/Sequoia), and compilation failed:
 
-The error looks like this:
 ```
 src/greenlet/greenlet.cpp:9:10: fatal error: 'cstdlib' file not found
 ```
 
-**The fix:** `setup.sh` automatically detects Python 3.14 and installs Python 3.13 via Homebrew before continuing. You don't need to do anything — the installer handles it.
+**The fix (v2.0.2):** `requirements.txt` now pins `playwright>=1.50.0`, which requires `greenlet>=3.1.1`. `greenlet 3.3+` ships a pre-built `universal2` wheel for every Python version including 3.14 — no compilation needed. This fix also resolves the failure on macOS 26 (Tahoe) regardless of Python version.
 
 ---
 
