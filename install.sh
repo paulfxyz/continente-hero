@@ -7,7 +7,6 @@
 #    chmod +x install.sh && ./install.sh
 #
 #  What this script does — in order:
-#    0. Marks all .sh scripts executable (fixes "permission denied" after clone)
 #    1. Checks you are on macOS
 #    2. Finds Python 3.11–3.13  (3.14+ is blocked — see WHY below)
 #       └─ If missing: offers to run  brew install python@3.13  for you
@@ -45,12 +44,16 @@ err()     { echo -e "  ${RED}✗${RESET}  $*" >&2; }
 section() { echo -e "\n${BOLD}${CYAN}── $* ──${RESET}"; }
 die()     { err "$*"; echo ""; exit 1; }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the directory containing this script.
+# BASH_SOURCE[0] is preferred (works for  source  and  ./install.sh).
+# Fall back to $0 for shells that don't set BASH_SOURCE.
+_src="${BASH_SOURCE[0]:-$0}"
+SCRIPT_DIR="$(cd "$(dirname "$_src")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/.venv"
 
 echo ""
 echo "══════════════════════════════════════════════════════════════"
-echo "  CONTINENTE HERO — Installer  (v1.2.3)"
+echo "  CONTINENTE HERO — Installer  (v1.2.4)"
 echo "══════════════════════════════════════════════════════════════"
 echo ""
 
@@ -75,10 +78,7 @@ section "2 / 5  Python"
 
 # python_ver BIN
 #   Prints the "major minor" (space-separated integers) for BIN, or returns 1.
-#   Using space-separated integers avoids the  ${ver##*.}  pitfall which strips
-#   everything up to the LAST dot — returning the patch number instead of minor
-#   (e.g. "1" from "3.13.1"). With  read major minor <<< "$ver_str"  we always
-#   get the right fields regardless of the patch version.
+#   Does NOT print anything on failure — caller decides what to say.
 python_ver() {
     local bin="$1"
     command -v "$bin" &>/dev/null || return 1
@@ -169,7 +169,7 @@ if [[ -z "$PYTHON_BIN" ]]; then
         read -r answer </dev/tty
         echo ""
 
-        if [[ "${answer,,}" == "y" ]]; then
+        if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
             echo "  Running: brew install python@3.13"
             echo ""
             if brew install python@3.13; then
@@ -246,9 +246,6 @@ info "All packages installed"
 section "5 / 5  Playwright Chromium browser"
 
 echo "  Downloading Chromium (~170 MB) — this takes a minute on first run…"
-# Use the full path to the venv's playwright binary. Even with the venv
-# activated, zsh does not always rehash its command cache mid-script, so
-# the bare  playwright  command may resolve to nothing or a system copy.
 "$VENV_DIR/bin/playwright" install chromium
 info "Chromium ready"
 
