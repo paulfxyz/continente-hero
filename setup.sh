@@ -15,7 +15,7 @@
 #
 #  What this script does — in order:
 #    1. Checks you are on macOS
-#    2. Finds Python 3.11–3.13  (3.14+ is blocked — greenlet has no wheel)
+#    2. Finds Python 3.11+  (3.14 now works — greenlet 3.3+ ships a cp314 wheel)
 #       └─ If missing and Homebrew is available: installs python@3.13 automatically
 #    3. Clones the repo to ~/continente-hero  (or updates it if already there)
 #       └─ Uses  git reset --hard origin/main  — bypasses local-change conflicts
@@ -30,11 +30,10 @@
 #  Override the install directory:
 #    CONTINENTE_DIR=~/projects/continente-hero bash setup.sh
 #
-#  WHY Python 3.14 is blocked:
-#    Playwright depends on  greenlet  — a C extension that needs a pre-built
-#    binary wheel. As of early 2026, no wheel exists for Python 3.14, and
-#    building from source fails because Apple's Clang is missing C++ headers
-#    that greenlet requires. Python 3.13 is the correct version to use.
+#  Python version support:
+#    Python 3.11–3.14 are all supported. The installer prefers 3.13 (most
+#    tested). If you only have 3.14, it will work — playwright>=1.50 depends
+#    on greenlet>=3.1.1 which ships pre-built wheels for all versions.
 #
 #  Safe to re-run: session cookies and config.yaml are never modified.
 # ─────────────────────────────────────────────────────────────────────────────
@@ -75,7 +74,7 @@ trap '_trap_exit' EXIT
 # ── Banner ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════════════════════════"
-echo "  CONTINENTE HERO — Quick Installer  (v2.0)"
+echo "  CONTINENTE HERO — Quick Installer  (v2.0.1)"
 echo "══════════════════════════════════════════════════════════════"
 echo ""
 
@@ -98,8 +97,9 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 2 — Find Python 3.11–3.13  (auto-install 3.13 via Homebrew if missing)
+# STEP 2 — Find Python 3.11+  (auto-install 3.13 via Homebrew if missing)
 # ─────────────────────────────────────────────────────────────────────────────
+# Python 3.11+ is supported. 3.14 now works — greenlet 3.3+ has a cp314 wheel.
 section "2 / 6  Python"
 
 # python_ver BIN  →  prints "major minor" or returns 1 silently
@@ -114,53 +114,33 @@ print(v.major, v.minor)
 }
 
 find_python() {
-    # Try explicit versioned binaries first (3.13 → 3.12 → 3.11), then bare python3.
-    # Bare python3 is last because on many Homebrew setups it points to 3.14.
-    for candidate in python3.13 python3.12 python3.11 python3 \
-        /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 \
-        /usr/local/bin/python3.13  /usr/local/bin/python3.12  /usr/local/bin/python3.11; do
+    # Try explicit versioned binaries first (3.13 preferred → 3.14 → 3.12 → 3.11),
+    # then fall back to bare python3.
+    # NOTE: Python 3.14 is now supported — greenlet 3.3+ ships a cp314 wheel.
+    for candidate in python3.13 python3.14 python3.12 python3.11 python3 \
+        /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.14 \
+        /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 \
+        /usr/local/bin/python3.13  /usr/local/bin/python3.14 \
+        /usr/local/bin/python3.12  /usr/local/bin/python3.11; do
         local ver_str
         ver_str=$(python_ver "$candidate" 2>/dev/null || true)
         [[ -z "$ver_str" ]] && continue
         local major minor
         read -r major minor <<< "$ver_str"
         [[ "$major" -ne 3 ]] && continue
-        [[ "$minor" -lt 11 || "$minor" -ge 14 ]] && continue
+        [[ "$minor" -lt 11 ]] && continue
         echo "$candidate"
         return 0
     done
     return 1
 }
 
-PYTHON_BIN=""
-BLOCKED_VER=""
-
-# Check for a blocked (3.14+) version so we can report it clearly
-for candidate in python3.14 python3; do
-    ver_str=$(python_ver "$candidate" 2>/dev/null || true)
-    [[ -z "$ver_str" ]] && continue
-    read -r major minor <<< "$ver_str"
-    if [[ "$major" -eq 3 && "$minor" -ge 14 ]]; then
-        BLOCKED_VER="$major.$minor"
-        break
-    fi
-done
-
 PYTHON_BIN=$(find_python 2>/dev/null || true)
 
 # ── No compatible Python — attempt automatic install via Homebrew ─────────────
 if [[ -z "$PYTHON_BIN" ]]; then
     echo ""
-    if [[ -n "$BLOCKED_VER" ]]; then
-        warn "Python $BLOCKED_VER is installed but NOT compatible."
-        echo ""
-        echo -e "  ${BOLD}Why Python $BLOCKED_VER doesn't work:${RESET}"
-        echo "  Playwright's  greenlet  dependency has no pre-built wheel for 3.14+."
-        echo "  Building from source fails because Apple's Clang is missing required"
-        echo "  C++ headers. Python 3.13 is the correct version to use."
-    else
-        warn "No compatible Python found (need 3.11–3.13)."
-    fi
+    warn "No compatible Python found (need 3.11 or higher)."
     echo ""
 
     if command -v brew &>/dev/null; then
@@ -185,14 +165,14 @@ if [[ -z "$PYTHON_BIN" ]]; then
                 ver_str=$(python_ver "$new_bin" 2>/dev/null || true)
                 [[ -z "$ver_str" ]] && continue
                 read -r major minor <<< "$ver_str"
-                if [[ "$major" -eq 3 && "$minor" -eq 13 ]]; then
+                if [[ "$major" -eq 3 && "$minor" -ge 11 ]]; then
                     PYTHON_BIN="$new_bin"
                     info "Python 3.13 ready — continuing setup…"
                     break
                 fi
             done
             if [[ -z "$PYTHON_BIN" ]]; then
-                die "Homebrew installed python@3.13 but the binary wasn't found in PATH or known locations. Open a new Terminal tab and re-run: curl -fsSL https://raw.githubusercontent.com/paulfxyz/continente-hero/main/setup.sh | bash"
+                die "Homebrew installed python@3.13 but the binary wasn't found. Open a new Terminal tab and re-run: curl -fsSL https://raw.githubusercontent.com/paulfxyz/continente-hero/main/setup.sh | bash"
             fi
         else
             die "brew install python@3.13 failed. Check the output above, then try again."
@@ -206,7 +186,7 @@ if [[ -z "$PYTHON_BIN" ]]; then
         echo "  1) Install Homebrew:"
         echo "     /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
         echo ""
-        echo "  2) Install Python 3.13:"
+        echo "  2) Install Python (3.13 recommended, any 3.11+ works):"
         echo "     brew install python@3.13"
         echo ""
         echo "  3) Re-run this installer:"
@@ -288,7 +268,9 @@ source "$VENV_DIR/bin/activate"
 pip install --quiet --upgrade pip >&2
 info "pip upgraded"
 
-if ! pip install -r "$INSTALL_DIR/requirements.txt" >&2; then
+# Use --upgrade so pip always resolves fresh versions and doesn't reuse
+# a cached broken wheel (e.g. greenlet 3.0.3 built against a stale SDK).
+if ! pip install --upgrade -r "$INSTALL_DIR/requirements.txt" >&2; then
     die "pip install failed. Check the output above for details."
 fi
 info "All packages installed"
