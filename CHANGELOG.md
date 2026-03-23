@@ -1,3 +1,111 @@
+## 🔖 [2.1.3] — 2026-03-23
+
+### ⚡ Feat — Exponential backoff + page-reload escape hatch for clear cart timeouts
+
+#### The problem
+
+After v2.1.2 delivered a working clear-cart flow, real-world use exposed a second failure mode: **XHR stalls**. SFCC's cart endpoint occasionally hangs under load. The optimistic UI removes the item from the DOM instantly, but the server-side cart state update never completes — the count drops for a moment and then bounces back, or the page just hangs.
+
+Naively retrying immediately made things worse. The already-overloaded endpoint received a flood of requests, causing further stalls. A single stuck item could spin for the entire run timeout without making progress.
+
+---
+
+#### The fix — `_clear_loop()` shared engine
+
+Both `clear_cart()` (the headless method) and `clear_cart_interactive()` now delegate the entire removal sequence to a single **`_clear_loop(page, selector)`** helper. This eliminates duplicated logic and makes the retry behaviour consistent regardless of which code path is used.
+
+`_clear_loop()` implements a five-layer resilience strategy:
+
+**Layer 1 — Count-drop polling (200 ms tick, 8 000 ms ceiling)**
+
+Rather than waiting a fixed time after each click, the bot polls the DOM every 200 ms and moves to the next item the moment the button count drops. Fast on a good connection (~100–300 ms), patient on a slow one.
+
+```python
+async def _poll_count_drop(current_count: int) -> bool:
+    while elapsed < CLEAR_TIMEOUT:
+        await page.wait_for_timeout(200)
+        remaining = await page.query_selector_all(selector)
+        if len(remaining) < current_count:
+            return True
+    return False
+```
+
+**Layer 2 — Exponential backoff ladder on timeout**
+
+If the poll times out (8 s with no count drop), the bot waits before retrying. Wait time escalates with each consecutive failure:
+
+| Attempt | Wait |
+|---|---|
+| 1st timeout | 2 s |
+| 2nd timeout | 5 s |
+| 3rd timeout | 15 s |
+| 4th timeout | 30 s |
+| 5th+ timeout | 60 s |
+
+The ladder is capped at 60 s — once you're at the last rung, it stays there. `asyncio.sleep()` is used for all backoff waits (not `page.wait_for_timeout()`). The distinction matters: `page.wait_for_timeout()` schedules a Playwright-internal timer and blocks the Python event loop for the duration. `asyncio.sleep()` yields to the event loop, keeping the browser window alive and responsive during long waits (30–60 s).
+
+**Layer 3 — Page-reload escape hatch every 3 consecutive timeouts**
+
+A stuck XHR can leave React's cart state in a half-updated limbo. Reloading the cart page forces a fresh server-side fetch, clearing any in-flight request and re-rendering the cart from ground truth.
+
+```python
+if consecutive_fails % CLEAR_RELOAD_AT == 0:  # every 3 failures
+    await page.reload(wait_until="domcontentloaded")
+    await page.wait_for_timeout(2_500)  # wait for React to hydrate
+```
+
+**Layer 4 — Skip + move on after 5 consecutive failures**
+
+If an item cannot be removed after 5 consecutive attempts, it is added to the skip queue and the bot moves on. No single item should block the entire run. The consecutive failure counter resets to zero so the next item starts fresh.
+
+**Layer 5 — Retry pass at the end**
+
+After the main loop, if any items were skipped, the bot does one final reload and attempts each skipped item once more. By this point, the transient server pressure that caused the original stalls has typically cleared.
+
+---
+
+#### Return value
+
+`_clear_loop()` returns a `(removed: int, skipped: int)` tuple. Both call sites unpack and report this cleanly:
+
+```
+[CLEAR CART] ✅  Removed 12 item(s). ⚠ 1 item(s) timed out and were skipped.
+[CLEAR CART] Refresh the cart in your browser to verify.
+```
+
+---
+
+#### Code quality improvements in this release
+
+- `REMOVE_SELECTOR` hoisted from two local variable definitions to a **module-level constant** alongside the other SFCC constants — single source of truth, consistent with `CLEAR_TIMEOUT`, `CLEAR_BACKOFF`, etc.
+- Redundant `import asyncio` inside `_clear_loop()` body removed — `asyncio` is already imported at module level (line 36).
+- All cart-clear tuning constants grouped under a dedicated block comment:
+  ```python
+  # ── Cart-clear retry / backoff tuning ────────────────────────────
+  REMOVE_SELECTOR  = 'button[aria-label="Apagar produto"]'
+  CLEAR_TIMEOUT    = 8_000
+  CLEAR_BACKOFF    = [2, 5, 15, 30, 60]
+  CLEAR_RELOAD_AT  = 3
+  CLEAR_GIVE_UP_AT = 5
+  CLEAR_MAX_SKIPS  = 5
+  ```
+
+---
+
+#### Summary of changes
+
+- ⚡ `feat:` `continente.py` — `_clear_loop()` shared engine with full retry architecture
+- ⚡ `feat:` `continente.py` — exponential backoff ladder `[2, 5, 15, 30, 60]` s
+- ⚡ `feat:` `continente.py` — page-reload escape hatch every 3 consecutive timeouts
+- ⚡ `feat:` `continente.py` — skip queue + retry pass for items that could not be removed
+- 🧹 `refactor:` `continente.py` — `REMOVE_SELECTOR` hoisted to module-level constant
+- 🧹 `refactor:` `continente.py` — redundant `import asyncio` removed from `_clear_loop()` body
+- 🏷️ `bump:` version banners → v2.1.3 in all five `.sh` files + README badge
+- 📖 `docs:` `README.md` — “Clear your cart” section expanded with retry behaviour table
+- 📖 `docs:` `README.md` — new **Challenge #12** section: SFCC XHR timeouts, backoff design, and `asyncio.sleep` vs `wait_for_timeout` explanation
+
+---
+
 ## 🔖 [2.1.2] — 2026-03-23
 
 ### 🐛 Fix — Clear cart only removed 1 item (wrong selectors + wrong wait strategy)
