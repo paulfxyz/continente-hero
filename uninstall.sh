@@ -28,7 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo ""
 echo "══════════════════════════════════════════════════════════════"
-echo "  CONTINENTE HERO — Uninstall  (v2.1.2)"
+echo "  CONTINENTE HERO — Uninstall  (v2.1.3)"
 echo "══════════════════════════════════════════════════════════════"
 echo ""
 echo "  This will remove:"
