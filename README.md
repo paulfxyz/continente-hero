@@ -472,7 +472,34 @@ if [ "$major" -eq 3 ] && [ "$minor" -ge 11 ] && [ "$minor" -le 13 ]; then
 
 ---
 
-### 9. Salesforce Commerce Cloud (SFCC) as the automation target
+### 10. `shop` alias not active after install — subshell isolation
+
+**Problem:** After `curl -fsSL URL | bash` finishes and prints "alias registered", the user types `shop` and gets `zsh: command not found: shop`. The script even says to run `source ~/.zshrc` — but users naturally skip it or don't notice.
+
+The root cause is a fundamental Unix rule: **a child process cannot modify the environment of its parent process.** When bash runs via `curl | bash`, it's a subshell — a child of the user's zsh session. Any `source ~/.zshrc` run inside that child only modifies the child's environment. When the child exits, those changes evaporate. The parent zsh session is completely unaffected.
+
+There is no technical way around this. No shell script can inject an alias into a parent shell's environment. Even Apple's own installers can't do it — they ask you to open a new terminal.
+
+**Why this is confusing:** The script writes the alias to `~/.zshrc` correctly. The alias is permanently saved. But the current terminal session loaded `~/.zshrc` at startup and hasn't re-read it since. It doesn't know the alias was added.
+
+**Fix:** Two changes in v2.0.2:
+1. The installer's final output now shows a big, hard-to-miss `source ~/.zshrc` command as the single required next step — not buried in a paragraph, but displayed as a standalone bold command
+2. Every failure path prints `cd ~/continente-hero && ./shop.sh` as an alias-free fallback that always works
+
+```bash
+# After install, run exactly this — once, in your current terminal:
+source ~/.zshrc
+
+# Then:
+shop
+
+# Or skip the alias entirely — always works:
+bash ~/continente-hero/shop.sh
+```
+
+---
+
+### 11. Salesforce Commerce Cloud (SFCC) as the automation target
 
 Continente.pt runs on Salesforce Commerce Cloud (formerly Demandware). The platform is a React SPA — there is no server-rendered HTML to parse. Every product tile, cart button, and search result is rendered by JavaScript after the page loads. This rules out simple HTTP clients like `requests` or `httpx`.
 
