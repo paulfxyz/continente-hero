@@ -7,6 +7,49 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ---
 
+## 🔖 [2.0.2] — 2026-03-23
+
+### 🐛 Critical fix — `greenlet` wheel missing on macOS 26 + Python 3.14 now supported
+
+This patch fixes the installer crash on macOS 26 (Tahoe/Sequoia) — the `cstdlib file not found` compilation error that affected both Python 3.13 and 3.14.
+
+---
+
+#### Root cause
+
+`requirements.txt` previously pinned `playwright==1.44.0`, which resolves `greenlet==3.0.3` as a dependency. `greenlet` is a C extension. When pip cannot find a pre-built wheel for the current OS/Python combination, it falls back to compiling from source.
+
+`greenlet 3.0.3` was released before macOS 26 (Tahoe) existed. Its wheel tag is `macosx_11_0_arm64`, which pip correctly identifies as compatible with newer macOS versions — but the pip wheel resolver on macOS 26 reports the platform tag as `macosx_26_0_arm64`, and the fallback source build fails because Apple's SDK ships without the `<cstdlib>` C++ header that `greenlet` requires:
+
+```
+src/greenlet/greenlet.cpp:9:10: fatal error: 'cstdlib' file not found
+```
+
+This happened regardless of whether Python 3.13 or 3.14 was used.
+
+#### The fix
+
+Updated `requirements.txt` to `playwright>=1.50.0`. Playwright 1.50+ depends on `greenlet>=3.1.1`, which ships a pre-built `macosx_11_0_universal2` wheel for every Python version including 3.13 and 3.14. Universal2 wheels work on all macOS versions — no compilation, no SDK dependency.
+
+Added `--upgrade` flag to `pip install` in both `setup.sh` and `install.sh` to ensure stale cached wheels are never reused.
+
+#### Python 3.14 now supported
+
+Previous versions blocked Python 3.14 explicitly. With `greenlet 3.3+` having a `cp314-cp314-macosx_11_0_universal2` wheel, Python 3.14 works correctly. The Python version check has been updated to accept 3.11–3.14.
+
+---
+
+#### Changes in this patch
+
+- 🐛 `fix:` `requirements.txt` — `playwright==1.44.0` → `playwright>=1.50.0` (resolves greenlet 3.3+ with universal2 wheels)
+- 🐛 `fix:` `setup.sh` — `pip install --upgrade` to bust stale cached wheels
+- 🐛 `fix:` `install.sh` — same `pip install --upgrade` fix
+- ✅ `feat:` `setup.sh` + `install.sh` — Python 3.14 unblocked, now accepted
+- 🏷️ `fix:` `shop.sh` + `update.sh` banners updated to v2.0.2
+- 📖 `docs:` `README.md` — version badge updated to 2.0.2, Python badge updated to 3.11–3.14, compatibility section rewritten
+
+---
+
 ## 🔖 [2.0.1] — 2026-03-23
 
 ### 🐛 Critical fix — `curl | bash` stdin pipe contamination
