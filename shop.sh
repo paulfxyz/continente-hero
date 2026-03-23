@@ -82,7 +82,7 @@ _draw_menu() {
 
     echo ""
     echo -e "${BOLD}${CYAN}  ╔══════════════════════════════════════════════════╗${RESET}"
-    echo -e "${BOLD}${CYAN}  ║   🦸  continente-hero  ·  v2.0                  ║${RESET}"
+    echo -e "${BOLD}${CYAN}  ║   🦸  continente-hero  ·  v2.0.1                 ║${RESET}"
     echo -e "${BOLD}${CYAN}  ╚══════════════════════════════════════════════════╝${RESET}"
     echo ""
 
