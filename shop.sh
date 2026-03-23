@@ -72,7 +72,7 @@ _active_config_name() {
     if [[ -L "$ACTIVE_CONFIG" ]]; then
         basename "$(readlink "$ACTIVE_CONFIG")"
     else
-        "config.yaml"
+        echo "config.yaml"
     fi
 }
 
