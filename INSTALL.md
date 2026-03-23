@@ -9,7 +9,7 @@ A macOS-native bot with no Docker, no build steps, and no cloud accounts require
 | Requirement | Minimum | Notes |
 |---|---|---|
 | **macOS** | 12 Monterey | Also works on Linux with minor path adjustments |
-| **Python** | 3.11 | 3.12 or 3.13 work fine too |
+| **Python** | 3.11 | 3.12 or 3.13 work fine. **3.14 is blocked** — see note below |
 | **Disk space** | ~300 MB | ~170 MB for Playwright Chromium + ~50 MB for the Python venv |
 | **Network** | Any | The bot runs locally; only continente.pt is accessed |
 
@@ -35,22 +35,30 @@ chmod +x install.sh && ./install.sh
 ```
 
 This single command:
-1. Checks your macOS version and confirms you're on a supported system
-2. Finds the highest available Python version (3.13, 3.12, 3.11 — in that order)
-3. Creates a `.venv/` virtual environment inside the project folder so nothing touches your system Python
-4. Upgrades pip silently
+1. Checks you are on macOS
+2. Finds the highest available Python 3.11–3.13 (or installs 3.13 via Homebrew if needed)
+3. **Wipes any existing `.venv/`** and rebuilds it clean — this prevents stale-environment bugs
+4. Upgrades pip inside the new venv
 5. Installs `playwright`, `pyyaml`, and `python-dotenv` from `requirements.txt`
-6. Downloads the Playwright Chromium browser (~170 MB — this is the actual Chrome binary the bot uses)
+6. Downloads the Playwright Chromium browser (~170 MB — the actual browser binary the bot drives)
 7. Creates `session/` and `reports/` directories
-8. Copies `.env.example` → `.env` if you don't have a `.env` yet
+8. Copies `.env.example` → `.env` if you don't have one yet
 
-You'll see progress for each step. It ends with `✅ Installation complete!`.
+You'll see progress for each step. It ends with `✅ continente-hero is ready!`.
 
-> ⚠️ **Python not found?**
+Safe to re-run at any time — your `session/cookies.json` and `config.yaml` are never touched.
+
+> ⚠️ **Python not found or wrong version?**
+> The installer supports **Python 3.11–3.13 only**. If you have Python 3.14 (common with a fresh Homebrew install in 2026), the installer will detect it, explain why it can't be used, and offer to install 3.13 for you automatically — just press `y`.
+>
+> If you prefer to do it manually:
 > ```bash
-> brew install python@3.12
+> brew install python@3.13
 > ```
-> No Homebrew? Install it from [brew.sh](https://brew.sh) — one command, takes 5 minutes. Or download Python directly from [python.org/downloads](https://www.python.org/downloads/).
+> No Homebrew? Install it from [brew.sh](https://brew.sh) first (one command, 5 minutes), then run the line above.
+
+> 📌 **Why is Python 3.14 blocked?**
+> Playwright depends on a C extension called `greenlet`. As of early 2026, `greenlet` has no pre-built wheel for Python 3.14, and compiling it from source fails on macOS because Apple's Clang does not include the `<cstdlib>` C++ header that `greenlet` needs. This is an upstream issue — the fix is simply to use Python 3.13.
 
 ---
 
