@@ -624,57 +624,39 @@ class ContinenteBot:
 
         # Selectors for the remove / delete button on a cart line item.
         # We try them in order — first match wins on each iteration.
-        REMOVE_SELECTORS = [
-            "button.remove-product",                           # SFCC default theme
-            "button[data-action='remove']",                    # data-action variant
-            ".cart-item__remove button",                       # nested button
-            "button.btn-remove-item",                          # alternative class
-            "button[aria-label='Remover']",                    # aria-label (PT)
-            "button[aria-label='Remove']",                     # aria-label (EN)
-            ".product-info__remove button",                    # product-info block
-            "[data-action='remove-product'] button",           # wrapper + button
-            ".ct-cart-item__remove button",                    # ct- prefix theme
-            "button.icon-close[data-pid]",                     # icon close with pid
-        ]
+        # Correct selector confirmed via live DOM inspection.
+        # See clear_cart_interactive() for full technical notes.
+        REMOVE_SELECTOR = 'button[aria-label="Apagar produto"]'
 
         removed = 0
-        max_iterations = 50  # safety cap
+        max_iterations = 100
 
         for _ in range(max_iterations):
-            # Re-query on every loop — the DOM is re-rendered after each removal
-            btn = None
-            for sel in REMOVE_SELECTORS:
-                try:
-                    btn = await self._page.query_selector(sel)
-                    if btn:
-                        break
-                except Exception:  # noqa: BLE001
-                    continue
+            btns = await self._page.query_selector_all(REMOVE_SELECTOR)
+            count_before = len(btns)
 
-            if not btn:
-                # No more remove buttons found — cart is empty (or was already)
+            if count_before == 0:
                 break
+
+            btn = btns[0]
 
             try:
                 await btn.scroll_into_view_if_needed()
-                await self._page.wait_for_timeout(400)
+                await self._page.wait_for_timeout(300)
                 await btn.click()
 
-                # Wait for the DOM to update before the next iteration.
-                # We wait for the button we just clicked to detach (disappear)
-                # from the DOM, which confirms SFCC has processed the removal.
-                # Fallback: a fixed 1.5 s wait covers cases where the element
-                # detaches instantly or the selector changes.
-                try:
-                    await btn.wait_for_element_state("detached", timeout=CLEAR_TIMEOUT)
-                except Exception:  # noqa: BLE001
-                    await self._page.wait_for_timeout(1_500)
+                # Wait for count to drop
+                for _ in range(80):
+                    await self._page.wait_for_timeout(100)
+                    remaining = await self._page.query_selector_all(REMOVE_SELECTOR)
+                    if len(remaining) < count_before:
+                        break
 
+                await self._page.wait_for_timeout(600)
                 removed += 1
-                print(f"    → Removed item {removed}")
+                print(f"    → Removed item {removed}  ({count_before - 1} left)")
 
             except Exception as exc:  # noqa: BLE001
-                # If a click fails, stop rather than loop forever
                 print(f"    [WARN] Could not click remove button: {exc}")
                 break
 
@@ -913,48 +895,60 @@ async def clear_cart_interactive(cfg: dict) -> None:
     # Give React time to render the cart
     await page.wait_for_timeout(2_000)
 
-    REMOVE_SELECTORS = [
-        "button.remove-product",
-        "button[data-action='remove']",
-        ".cart-item__remove button",
-        "button.btn-remove-item",
-        "button[aria-label='Remover']",
-        "button[aria-label='Remove']",
-        ".product-info__remove button",
-        "[data-action='remove-product'] button",
-        ".ct-cart-item__remove button",
-        "button.icon-close[data-pid]",
-    ]
+    # ── The correct remove button selector for continente.pt ─────────────────
+    # Live DOM inspection confirms the button uses aria-label="Apagar produto"
+    # (Portuguese for "Delete product"). Class-based selectors do not work —
+    # SFCC uses generic utility classes that do not contain "remove"/"delete".
+    #
+    # Post-removal behaviour (observed):
+    #   - Item disappears from DOM IMMEDIATELY (optimistic UI update)
+    #   - A transient "Produto removido" + "Anular" (undo) inline row appears
+    #     in the same slot, then auto-dismisses after ~3-5 seconds
+    #   - The remove button count decreases synchronously
+    #
+    # Wait strategy:
+    #   We count the remove buttons BEFORE clicking, then wait until the count
+    #   drops by 1. This is more reliable than wait_for_element_state("detached")
+    #   because the optimistic update means the element is gone before the XHR
+    #   confirms. We also add a small fixed pause after each removal to let the
+    #   "Anular" undo row settle — clicking too fast can interfere with the
+    #   SFCC cart state.
+    REMOVE_SELECTOR = 'button[aria-label="Apagar produto"]'
 
     removed = 0
-    max_iterations = 50
+    max_iterations = 100  # generous cap — handles large carts
 
     for _ in range(max_iterations):
-        btn = None
-        for sel in REMOVE_SELECTORS:
-            try:
-                btn = await page.query_selector(sel)
-                if btn:
-                    break
-            except Exception:  # noqa: BLE001
-                continue
+        # Re-query fresh on every iteration — React re-renders the whole list
+        btns = await page.query_selector_all(REMOVE_SELECTOR)
+        count_before = len(btns)
 
-        if not btn:
-            break  # No more remove buttons — cart is empty
+        if count_before == 0:
+            break  # Cart is empty — done
+
+        btn = btns[0]  # always click the first remaining button
 
         try:
             await btn.scroll_into_view_if_needed()
-            await page.wait_for_timeout(400)
+            await page.wait_for_timeout(300)
             await btn.click()
 
-            # Wait for SFCC to re-render before next iteration
-            try:
-                await btn.wait_for_element_state("detached", timeout=CLEAR_TIMEOUT)
-            except Exception:  # noqa: BLE001
-                await page.wait_for_timeout(1_500)
+            # Wait for the count to drop (confirms the optimistic UI updated)
+            # Timeout: 8 s per item — generous for slow connections
+            for _ in range(80):  # 80 × 100 ms = 8 s max
+                await page.wait_for_timeout(100)
+                remaining = await page.query_selector_all(REMOVE_SELECTOR)
+                if len(remaining) < count_before:
+                    break
+
+            # Small extra pause so the "Anular" undo row can settle before
+            # we click the next remove button. Without this, SFCC occasionally
+            # counts the undo as a re-add and the cart item reappears.
+            await page.wait_for_timeout(600)
 
             removed += 1
-            print(f"    → Removed item {removed}")
+            remaining_count = count_before - 1
+            print(f"    → Removed item {removed}  ({remaining_count} left)")
 
         except Exception as exc:  # noqa: BLE001
             print(f"    [WARN] Could not click remove button: {exc}")
