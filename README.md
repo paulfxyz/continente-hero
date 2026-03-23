@@ -1,6 +1,6 @@
 # 🦸 continente-hero
 
-[![Version](https://img.shields.io/badge/Version-2.1.2-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
+[![Version](https://img.shields.io/badge/Version-2.1.3-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.11--3.14-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-45ba4b?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/)
 [![macOS](https://img.shields.io/badge/macOS-native-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos/)
@@ -50,7 +50,7 @@ That opens an interactive menu:
 
 ```
   ╔══════════════════════════════════════════════════╗
-  ║   🦸  continente-hero  ·  v2.1.2               ║
+  ║   🦸  continente-hero  ·  v2.1.3               ║
   ╚══════════════════════════════════════════════════╝
 
   Active list: config.yaml
@@ -166,7 +166,20 @@ Loaded the wrong list? Run the bot twice by accident? **Option 2** empties your 
 shop  →  2) 🗑️  Clear my cart
 ```
 
-A browser window opens so you can **watch every item disappear** and confirm the cart is empty before closing. The bot removes items one by one, waiting for each removal to complete before clicking the next — this handles SFCC's React re-renders correctly.
+A browser window opens so you can **watch every item disappear** and confirm the cart is empty before closing.
+
+The bot removes items one by one using a **resilient retry engine** that handles the network instability common on SFCC carts:
+
+| Situation | What happens |
+|---|---|
+| Item removed in < 8 s | ✅ Moves straight to the next item |
+| XHR stalls / no DOM change after 8 s | ⏱ Waits on backoff ladder: 2 s → 5 s → 15 s → 30 s → 60 s, then retries |
+| 3 consecutive timeouts on any item | ↺ Reloads the cart page to flush the stuck XHR, then retries |
+| 5 consecutive timeouts on the same item | ⚠ Skips item, moves to next |
+| 5 total skipped items | 🛑 Aborts run and reports |
+| Any items still present after main loop | 🔄 Automatic retry pass — reloads page and tries skipped items once more |
+
+If any items remain after the retry pass, the bot tells you how many and prints a message asking you to verify in the browser.
 
 > After clearing, run **Option 1** to refill from whichever list is active.
 
@@ -515,6 +528,56 @@ shop
 # Or skip the alias entirely — always works:
 bash ~/continente-hero/shop.sh
 ```
+
+---
+
+### 12. SFCC cart XHRs timing out — exponential backoff + page-reload escape hatch
+
+**Problem:** After v2.1.2 fixed the selector and count-drop polling, a new failure mode appeared in real-world use: the XHR that actually updates the server-side cart occasionally stalls. The DOM count drops (optimistic UI) but then the page hangs or the count bounces back. On a slower connection or when the SFCC backend is under load, this happened on multiple items per run — making the clear operation feel unreliable.
+
+Simply polling longer didn't help. And retrying immediately after a failure hammered the already-overloaded endpoint, making stalls more frequent.
+
+**The architecture — `_clear_loop()`:**
+
+The fix introduces a shared helper (`_clear_loop()`) used by both `clear_cart()` and `clear_cart_interactive()`. It implements:
+
+**1. Count-drop polling** (200 ms intervals, up to `CLEAR_TIMEOUT` = 8 000 ms)
+```python
+async def _poll_count_drop(current_count: int) -> bool:
+    # Polls every 200 ms — fast enough to feel responsive,
+    # slow enough to avoid thrashing the DOM query selector API.
+    while elapsed < CLEAR_TIMEOUT:
+        remaining = await page.query_selector_all(selector)
+        if len(remaining) < current_count:
+            return True  # confirmed gone
+    return False          # timed out
+```
+
+**2. Exponential backoff ladder** — `[2, 5, 15, 30, 60]` seconds
+
+Each consecutive timeout on the same item walks one step further up the ladder. This gives the SFCC backend time to recover before the next attempt. If the ladder is exhausted it stays at 60 s. We use `asyncio.sleep()` here — not `page.wait_for_timeout()` — because the latter holds the Playwright event loop and would block the browser from processing any events during the wait.
+
+```python
+wait_s = CLEAR_BACKOFF[min(backoff_idx, len(CLEAR_BACKOFF) - 1)]
+await asyncio.sleep(wait_s)  # correct: yields event loop; page stays alive
+```
+
+**3. Page-reload escape hatch** — every `CLEAR_RELOAD_AT` = 3 consecutive timeouts
+
+A stuck XHR can leave the React cart in a half-updated state. Reloading forces a fresh fetch from the server, re-rendering the cart with the actual server-side item count. Without this, a single stuck request could block the entire remaining clear run.
+
+```python
+if consecutive_fails % CLEAR_RELOAD_AT == 0:
+    await page.reload(wait_until="domcontentloaded")
+    await page.wait_for_timeout(2_500)  # let React hydrate
+```
+
+**4. Skip queue + retry pass**
+
+After `CLEAR_GIVE_UP_AT` = 5 consecutive failures an item is added to the skip queue and the bot moves on. This is critical for progress: one stuck item should not hold the entire run hostage. After the main loop, there is a single retry pass: the page is reloaded and every skipped item is attempted once more. By this point the transient server pressure that caused the stall has usually cleared.
+
+**Why `asyncio.sleep()` and not `page.wait_for_timeout()`:**  
+`wait_for_timeout` is a Playwright method that schedules a timer inside the browser's event loop. It only yields control back to Python after it fires — meaning Python is blocked and cannot run any other coroutine. For inter-item backoff waits (potentially 30–60 seconds) we must use `asyncio.sleep()` so that the Python event loop stays responsive. The browser window stays alive and can receive user input during the wait.
 
 ---
 
