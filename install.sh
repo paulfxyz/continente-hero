@@ -51,7 +51,7 @@ VENV_DIR="$SCRIPT_DIR/.venv"
 
 echo ""
 echo "══════════════════════════════════════════════════════════════"
-echo "  CONTINENTE HERO — Installer  (v1.2.4)"
+echo "  CONTINENTE HERO — Installer  (v2.0.2)"
 echo "══════════════════════════════════════════════════════════════"
 echo ""
 
