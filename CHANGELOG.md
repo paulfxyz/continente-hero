@@ -7,12 +7,45 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ---
 
+## 🔖 [1.3.0] — 2026-03-23
+
+### ✨ New — curl one-liner installer
+
+**`setup.sh` — new curl-based installer (zero prior clone required)**
+- 🚀 `feat:` Added `setup.sh` — run the entire installation from a single curl command: `curl -fsSL https://raw.githubusercontent.com/paulfxyz/continente-hero/main/setup.sh | bash`
+- 📁 `feat:` Auto-clones the repo to `~/continente-hero` on first run — no manual `git clone` needed
+- 🔄 `feat:` On re-run, uses `git fetch + git reset --hard origin/main` instead of `git pull` — bypasses the "local changes would be overwritten" error that `git pull` produces when `chmod +x` has modified `.sh` files
+- 🖥️ `feat:` Detects whether stdin is a terminal or a pipe — when piped through `curl | bash`, interactive prompts are skipped and clear instructions are printed instead (prompting from a pipe produces garbage input)
+- 🛡️ `feat:` Explicit `if ! git clone` / `if ! git fetch` guards — prints a clear message and exits if the network fails, instead of silently continuing with a missing or half-written repo
+- 🛡️ `feat:` Explicit `if ! pip install` and `if ! playwright install chromium` guards with actionable error messages
+- 🪤 `feat:` `trap EXIT` handler — if the script dies unexpectedly for any reason, prints the exit code and suggests `bash -x setup.sh` for debugging
+- 📂 `feat:` `CONTINENTE_DIR` env var override — install to a custom path: `CONTINENTE_DIR=~/projects/continente-hero bash setup.sh`
+- 📌 `feat:` Version bumped to v1.3.0 in the banner
+
+**`README.md`**
+- 🏷️ `fix:` Version badge updated to `1.3.0`
+- 🚀 `feat:` New prominent "Quick Install" section added at the top with the curl one-liner as the primary entry point
+- 📋 `feat:` `setup.sh` added to the "What's in the box" file table
+
+---
+
+## 🔖 [1.2.4] — 2026-03-23
+
+### 🐛 Hotfix — three shell compatibility bugs
+
+**`install.sh`**
+- 🐛 `fix:` `${answer,,}` lowercase expansion removed — this is a bash-only feature that crashes on any shell running as `/bin/sh` (dash). Replaced with an explicit `"$answer" == "y" || "$answer" == "Y"` check that works everywhere
+- 📂 `fix:` `SCRIPT_DIR` resolution rewritten — `${BASH_SOURCE[0]}` is undefined under `/bin/sh`, causing the script to resolve its own directory incorrectly (producing the double-nested path `/continente-hero/continente-hero/`). Now uses `${BASH_SOURCE[0]:-$0}` with a sh-compatible fallback
+- 📌 `fix:` Version bumped to v1.2.4 in the banner
+
+---
+
 ## 🔖 [1.2.3] — 2026-03-23
 
 ### 🐛 Hotfix
 
 **`install.sh` — two runtime bugs fixed**
-- 🛡️ `fix:` All `.sh` scripts are now `chmod +x`'d at the very start of `install.sh` — a fresh `git clone` does not preserve execute bits, causing `permission denied` errors on `run.sh`, `edit.sh`, etc.
+- 🛡️ `fix:` All `.sh` scripts are now `chmod +x`’d at the very start of `install.sh` — a fresh `git clone` does not preserve execute bits, causing `permission denied` errors on `run.sh`, `edit.sh`, etc.
 - 📦 `fix:` Playwright Chromium is now installed using the full venv path (`$VENV_DIR/bin/playwright`) instead of the bare `playwright` command — zsh does not always rehash its command cache mid-script after venv activation, so the bare command resolved to nothing and silently skipped the browser download
 
 ---
