@@ -9,15 +9,29 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ## 🔖 [1.2.2] — 2026-03-23
 
-### 🐛 Hotfix — `install.sh` complete rewrite
+### 🐛 `install.sh` — full rewrite (self-healing, zero-config)
 
-**All-in-one, self-healing installer**
-- 🔄 `fix:` Stale `.venv` auto-detected and wiped — if the existing environment was built with the wrong Python (e.g. 3.14), it is automatically deleted and rebuilt with the correct interpreter; no manual cleanup needed
-- 🍺 `fix:` If no compatible Python is found AND Homebrew is available, the installer now offers to run `brew install python@3.13` interactively — one `y` keypress and it installs Python, then continues setup automatically
-- 🚫 `fix:` Python 3.14+ hard-blocked with a clear explanation — "Playwright's greenlet dependency has no pre-built wheel for Python 3.14+"
+**Core behaviour changes**
+- 🗑️ `fix:` `.venv` is now **always wiped and rebuilt clean** on every run — no more stale-environment bugs when Python changes between runs
+- 🍺 `fix:` If no compatible Python is found and Homebrew is available, the installer now offers to run `brew install python@3.13` interactively and then **continues setup automatically** after install completes
+- 🔍 `fix:` After `brew install python@3.13`, the script explicitly checks `/opt/homebrew/bin/python3.13` and `/usr/local/bin/python3.13` — the well-known Homebrew paths on Apple Silicon and Intel Macs — because the new binary may not be in `$PATH` in the same shell session
+- 🛇 `fix:` Python version parsing rewritten to use `print(v.major, v.minor)` (space-separated integers) instead of `major.minor` string splitting — the old `${ver##*.}` approach returned the patch number (e.g. `1` from `3.13.1`) instead of the minor version
+- ℹ️ `fix:` `pip install` step now runs **without `--quiet`** so the user can see download/build progress during the ~30s Playwright wheel installation
+- 📝 `fix:` In-script comments explain *why* Python 3.14 is blocked (no `greenlet` wheel, Clang missing `<cstdlib>`) so any developer reading the script understands the constraint
 - 🏷️ `fix:` Banner corrected from "CONTINENTE CART BOT" to "CONTINENTE HERO"
-- 🎨 `fix:` Cyan section headers for better terminal readability
-- 📋 `fix:` Installer header documents exactly what each step does, safe-to-rerun guarantee, and that session/config files are never touched
+
+**README.md**
+- 🏷️ `fix:` Version badge updated from `1.2.0` → `1.2.2`
+- 🐍 `fix:` Python badge updated from `3.11+` → `3.11–3.13` to accurately reflect the supported range
+- ✅ `feat:` New "Python version compatibility" section added — explains the greenlet/3.14 issue in plain English with a link from the install step
+- 💬 `fix:` Run report example updated from `CONTINENTE CART BOT` / `CONTINENTE CART — RUN REPORT` → `CONTINENTE HERO` / `CONTINENTE HERO — RUN REPORT`
+- 💡 `fix:` Step 2 tip updated: removed outdated `brew install python@3.12` reference
+
+**INSTALL.md**
+- 🐍 `fix:` Requirements table note updated: Python 3.14 is blocked, with inline explanation
+- 📋 `fix:` Step 2 description updated to mention the venv is always wiped, and the `install.sh` success message corrected
+- ❗ `fix:` Python troubleshooting tip updated from `brew install python@3.12` → `brew install python@3.13`, with an additional callout box explaining *why* 3.14 is blocked
+- 🐛 `fix:` Stale `python continente.py` reference removed from session-save completion message
 
 ---
 
