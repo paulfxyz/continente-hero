@@ -1,6 +1,6 @@
 # 🦸 continente-hero
 
-[![Version](https://img.shields.io/badge/Version-2.0.2-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
+[![Version](https://img.shields.io/badge/Version-2.0.3-brightgreen?style=for-the-badge)](https://github.com/paulfxyz/continente-hero/releases/latest)
 [![Python](https://img.shields.io/badge/Python-3.11--3.14-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Playwright](https://img.shields.io/badge/Playwright-Chromium-45ba4b?style=for-the-badge&logo=playwright&logoColor=white)](https://playwright.dev/)
 [![macOS](https://img.shields.io/badge/macOS-native-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos/)
@@ -50,7 +50,7 @@ That opens an interactive menu:
 
 ```
   ╔══════════════════════════════════════════════════╗
-  ║   🦸  continente-hero  ·  v2.0.2               ║
+  ║   🦸  continente-hero  ·  v2.0.3               ║
   ╚══════════════════════════════════════════════════╝
 
   Active list: config.yaml
@@ -60,7 +60,7 @@ That opens an interactive menu:
   1)  🛒  Fill my cart              (run the bot)
   2)  🔐  Save / refresh session    (log in once)
   3)  ✏️   Edit shopping list        (opens editor)
-  4)  📂  Switch shopping list      (multi-config)
+  4)  📂  Manage shopping lists    (select, browse, create)
   5)  🔄  Update continente-hero    (pull latest)
   6)  👋  Quit
 
@@ -172,10 +172,13 @@ Lists are stored in the `configs/` folder:
 
 **How it works:**
 
-1. Open `shop`, choose **Option 4 — Switch shopping list**
-2. Select a list, or create a new one (it copies your current config as a starting point)
-3. The menu shows which list is active at the top of every screen
-4. Switching sets `config.yaml` to point to the chosen list
+1. Open `shop`, choose **Option 4 — Manage shopping lists**
+2. Pick a sub-option:
+   - **✅ Select active list** — numbered picker, shows which list is currently active with a `● active` marker
+   - **📂 Open lists folder** — opens `configs/` in Finder so you can browse, rename, duplicate or delete lists like any normal files
+   - **✨ Create new list** — prompts for a name, copies current config as a starting point, and optionally activates it immediately
+3. The menu always shows which list is active at the top of every screen
+4. Switching sets `config.yaml` to symlink to the chosen list (the bot always reads `config.yaml` — no changes needed to `continente.py`)
 
 ---
 
