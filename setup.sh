@@ -169,7 +169,15 @@ if [[ -z "$PYTHON_BIN" ]]; then
         # is expected to do — get everything ready without asking questions.
         echo -e "  ${BOLD}Installing Python 3.13 via Homebrew…${RESET}"
         echo ""
-        if brew install python@3.13; then
+        # IMPORTANT: redirect brew stdout to stderr.
+        # When this script runs via  curl | bash  the shell reads its
+        # instructions from stdin (the curl pipe). Any command that writes to
+        # stdout feeds back into that pipe and gets interpreted as shell code.
+        # brew install outputs hundreds of lines (download progress, caveats,
+        # shell script fragments) — without >&2 those lines become bash input
+        # and cause spectacular failures. Redirecting to stderr keeps all output
+        # visible in the terminal but keeps stdin clean for bash.
+        if brew install python@3.13 >&2; then
             echo ""
             # Homebrew may not have updated PATH in this shell session yet.
             # Check well-known absolute paths explicitly.
@@ -236,15 +244,15 @@ if [[ -d "$INSTALL_DIR/.git" ]]; then
     # is on GitHub — which is correct for an install/repair script.
     info "Repo found at $INSTALL_DIR — updating to latest…"
     cd "$INSTALL_DIR"
-    if ! git fetch --quiet origin main; then
+    if ! git fetch --quiet origin main >&2; then
         die "git fetch failed. Check your internet connection and try again."
     fi
-    git reset --hard origin/main
-    info "Repo updated to $(git log -1 --format='%h %s')"
+    git reset --hard origin/main >&2
+    info "Repo updated to $(git -C "$INSTALL_DIR" log -1 --format='%h %s')"
 else
     mkdir -p "$(dirname "$INSTALL_DIR")"
     echo "  Cloning into $INSTALL_DIR…"
-    if ! git clone https://github.com/paulfxyz/continente-hero.git "$INSTALL_DIR"; then
+    if ! git clone https://github.com/paulfxyz/continente-hero.git "$INSTALL_DIR" >&2; then
         die "git clone failed. Check your internet connection and try again."
     fi
     cd "$INSTALL_DIR"
@@ -272,15 +280,15 @@ if [[ -d "$VENV_DIR" ]]; then
 fi
 
 WANT_VER=$("$PYTHON_BIN" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-"$PYTHON_BIN" -m venv "$VENV_DIR"
+"$PYTHON_BIN" -m venv "$VENV_DIR" >&2
 info "Created .venv with Python $WANT_VER"
 
 # shellcheck source=/dev/null
 source "$VENV_DIR/bin/activate"
-pip install --quiet --upgrade pip
+pip install --quiet --upgrade pip >&2
 info "pip upgraded"
 
-if ! pip install -r "$INSTALL_DIR/requirements.txt"; then
+if ! pip install -r "$INSTALL_DIR/requirements.txt" >&2; then
     die "pip install failed. Check the output above for details."
 fi
 info "All packages installed"
@@ -293,7 +301,7 @@ section "6 / 6  Playwright Chromium browser"
 echo "  Downloading Chromium (~170 MB) — takes a minute on first run…"
 # Always use full venv path — zsh doesn't always rehash PATH after venv
 # activation, so the bare  playwright  command may silently resolve to nothing.
-if ! "$VENV_DIR/bin/playwright" install chromium; then
+if ! "$VENV_DIR/bin/playwright" install chromium >&2; then
     die "Playwright Chromium install failed. Check the output above."
 fi
 info "Chromium ready"
