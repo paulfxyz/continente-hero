@@ -74,7 +74,7 @@ trap '_trap_exit' EXIT
 # ── Banner ────────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════════════════════════"
-echo "  CONTINENTE HERO — Quick Installer  (v2.0.1)"
+echo "  CONTINENTE HERO — Quick Installer  (v2.0.2)"
 echo "══════════════════════════════════════════════════════════════"
 echo ""
 
@@ -331,7 +331,6 @@ if [[ -n "$RC_FILE" ]]; then
         echo "$ALIAS_LINE" >> "$RC_FILE"
         info "Registered  shop  alias in $RC_FILE"
     fi
-    warn "Run  source $RC_FILE  (or open a new Terminal tab) to activate the alias."
 else
     warn "Could not detect shell rc file — add this line manually to ~/.zshrc or ~/.bashrc:"
     echo ""
@@ -349,12 +348,20 @@ echo "════════════════════════�
 echo ""
 echo "  Installed at: $INSTALL_DIR"
 echo ""
-echo "  ❶  Activate the  shop  alias (once per Terminal session until you reopen):"
-echo -e "       ${CYAN}source $RC_FILE${RESET}"
+# ── Why you must copy-paste the next command ───────────────────────────────────
+# This installer runs inside  curl | bash  — a subshell.
+# Any  source ~/.zshrc  run here only affects the subshell, not your Terminal.
+# When the subshell exits the alias disappears. The only fix is to source
+# the rc file in your own shell session, which requires one copy-paste.
+# This is a fundamental Unix process isolation rule, not a bug in this script.
+echo -e "  ${BOLD}${YELLOW}⚠️  One step left — copy and run this in your Terminal:${RESET}"
 echo ""
-echo "  ❷  Launch the menu:"
-echo -e "       ${CYAN}shop${RESET}"
+echo -e "  ${BOLD}${CYAN}  source ${RC_FILE:-~/.zshrc}${RESET}"
 echo ""
-echo "  Or go straight to the folder:"
-echo -e "       ${CYAN}cd $INSTALL_DIR && ./shop.sh${RESET}"
+echo "  That loads the  shop  alias into your current session."
+echo "  After that, just type:"
+echo ""
+echo -e "  ${BOLD}${CYAN}  shop${RESET}"
+echo ""
+echo -e "  ${GREEN}(You only need to do this once. New Terminal tabs/windows work automatically.)${RESET}"
 echo ""
