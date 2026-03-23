@@ -9,14 +9,15 @@
 #
 #  Menu options:
 #    1) Run the bot         — fills your cart using the active shopping list
-#    2) Save / refresh session — opens a browser so you can log in once
-#    3) Edit shopping list  — opens config in the best available editor
-#    4) Manage shopping lists — sub-menu:
+#    2) Clear my cart       — removes every item from your cart (opens visible browser)
+#    3) Save / refresh session — opens a browser so you can log in once
+#    4) Edit shopping list  — opens config in the best available editor
+#    5) Manage shopping lists — sub-menu:
 #         a) Select active list  — pick which list the bot runs
 #         b) Open lists folder   — opens configs/ in Finder so you can edit/add/remove files
 #         c) Create new list     — copies current config as a starting point
-#    5) Update continente-hero — pull latest code + refresh all dependencies
-#    6) Quit
+#    6) Update continente-hero — pull latest code + refresh all dependencies
+#    7) Quit
 #
 #  Multi-config support:
 #    Save any number of .yaml files in the configs/ directory.
@@ -85,7 +86,7 @@ _draw_menu() {
 
     echo ""
     echo -e "${BOLD}${CYAN}  ╔══════════════════════════════════════════════════╗${RESET}"
-    echo -e "${BOLD}${CYAN}  ║   🦸  continente-hero  ·  v2.0.4                 ║${RESET}"
+    echo -e "${BOLD}${CYAN}  ║   🦸  continente-hero  ·  v2.1.0                 ║${RESET}"
     echo -e "${BOLD}${CYAN}  ╚══════════════════════════════════════════════════╝${RESET}"
     echo ""
 
@@ -97,11 +98,12 @@ _draw_menu() {
     hr
 
     echo -e "  ${BOLD}${GREEN}1)${RESET}  🛒  Fill my cart              ${DIM}(run the bot)${RESET}"
-    echo -e "  ${BOLD}${GREEN}2)${RESET}  🔐  Save / refresh session    ${DIM}(log in once)${RESET}"
-    echo -e "  ${BOLD}${GREEN}3)${RESET}  ✏️   Edit shopping list        ${DIM}(opens editor)${RESET}"
-    echo -e "  ${BOLD}${GREEN}4)${RESET}  📂  Manage shopping lists    ${DIM}(select, browse, create)${RESET}"
-    echo -e "  ${BOLD}${GREEN}5)${RESET}  🔄  Update continente-hero    ${DIM}(pull latest)${RESET}"
-    echo -e "  ${BOLD}${RED}6)${RESET}  👋  Quit"
+    echo -e "  ${BOLD}${YELLOW}2)${RESET}  🗑️   Clear my cart             ${DIM}(remove all items)${RESET}"
+    echo -e "  ${BOLD}${GREEN}3)${RESET}  🔐  Save / refresh session    ${DIM}(log in once)${RESET}"
+    echo -e "  ${BOLD}${GREEN}4)${RESET}  ✏️   Edit shopping list        ${DIM}(opens editor)${RESET}"
+    echo -e "  ${BOLD}${GREEN}5)${RESET}  📂  Manage shopping lists    ${DIM}(select, browse, create)${RESET}"
+    echo -e "  ${BOLD}${GREEN}6)${RESET}  🔄  Update continente-hero    ${DIM}(pull latest)${RESET}"
+    echo -e "  ${BOLD}${RED}7)${RESET}  👋  Quit"
     echo ""
     hr
     echo ""
@@ -142,7 +144,53 @@ _run_bot() {
     read -r </dev/tty
 }
 
-# ── Option 2 — Save / refresh session ────────────────────────────────────────
+# ── Option 2 — Clear my cart ─────────────────────────────────────────────────
+#
+#  Delegates to  python continente.py --clear-cart.
+#  The Python bot: logs in via saved session, navigates to the cart page,
+#  then iterates remove buttons one-by-one until none remain. Runs with a
+#  visible browser by default so you can watch items disappear and confirm.
+#
+#  Design note: we don't implement the removal loop in bash because it would
+#  require injecting JS or scraping HTML — both are fragile against SFCC
+#  re-renders. Keeping it in Python means we get Playwright's full DOM API
+#  including  wait_for_element_state("detached")  for safe inter-item pacing.
+_clear_cart() {
+    echo ""
+    echo -e "${BOLD}${YELLOW}  🗑️   Clear My Cart${RESET}"
+    echo ""
+    echo "  This will open a browser window and remove"
+    echo "  every item from your Continente cart."
+    echo ""
+    echo -e "  ${YELLOW}⚠  This cannot be undone — run option 1 to refill.${RESET}"
+    echo ""
+    printf "  Are you sure? [y/N] → "
+    read -r confirm </dev/tty
+    echo ""
+
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        echo -e "  ${DIM}Cancelled — cart untouched.${RESET}"
+        echo ""
+        printf "  Press Enter to return to the menu…"
+        read -r </dev/tty
+        return
+    fi
+
+    echo -e "  ${DIM}Opening browser and clearing cart…${RESET}"
+    echo ""
+
+    python "$SCRIPT_DIR/continente.py" --clear-cart || {
+        echo ""
+        warn "Clear cart exited with an error. Check the output above."
+        echo ""
+    }
+
+    echo ""
+    printf "  Press Enter to return to the menu…"
+    read -r </dev/tty
+}
+
+# ── Option 3 — Save / refresh session ────────────────────────────────────────
 _save_session() {
     echo ""
     echo -e "${BOLD}${CYAN}  🔐  Save / Refresh Session${RESET}"
@@ -169,7 +217,7 @@ _save_session() {
     read -r </dev/tty
 }
 
-# ── Option 3 — Edit shopping list ────────────────────────────────────────────
+# ── Option 4 — Edit shopping list ────────────────────────────────────────────
 _edit_list() {
     echo ""
     echo -e "${BOLD}${CYAN}  ✏️   Edit Shopping List${RESET}"
@@ -221,7 +269,7 @@ _edit_list() {
     read -r </dev/tty
 }
 
-# ── Option 4 — Manage shopping lists (sub-menu) ──────────────────────────────
+# ── Option 5 — Manage shopping lists (sub-menu) ──────────────────────────────
 #
 #  This replaces the old single-screen switch. It now has three sub-options:
 #
@@ -459,7 +507,7 @@ _create_list() {
     read -r </dev/tty
 }
 
-# ── Option 4 — Manage lists (sub-menu) ───────────────────────────────────────
+# ── Option 5 — Manage lists (sub-menu) ───────────────────────────────────────
 _manage_lists() {
     while true; do
         clear 2>/dev/null || echo ""
@@ -501,7 +549,7 @@ _manage_lists() {
     done
 }
 
-# ── Option 5 — Update ─────────────────────────────────────────────────────────
+# ── Option 6 — Update ─────────────────────────────────────────────────────────
 _update() {
     echo ""
     echo -e "${BOLD}${CYAN}  🔄  Updating continente-hero…${RESET}"
@@ -545,24 +593,25 @@ _update() {
 while true; do
     _draw_menu
 
-    printf "  Choose [1–6] → "
+    printf "  Choose [1–7] → "
     read -r choice </dev/tty
     echo ""
 
     case "$choice" in
         1) _run_bot        ;;
-        2) _save_session   ;;
-        3) _edit_list      ;;
-        4) _manage_lists   ;;
-        5) _update         ;;
-        6|q|Q|quit|exit)
+        2) _clear_cart     ;;
+        3) _save_session   ;;
+        4) _edit_list      ;;
+        5) _manage_lists   ;;
+        6) _update         ;;
+        7|q|Q|quit|exit)
             echo ""
             echo -e "  ${DIM}Later. 👋${RESET}"
             echo ""
             exit 0
             ;;
         *)
-            warn "Invalid choice — enter a number from 1 to 6."
+            warn "Invalid choice — enter a number from 1 to 7."
             sleep 1
             ;;
     esac
